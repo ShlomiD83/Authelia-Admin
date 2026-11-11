@@ -1,9 +1,10 @@
 name: Build and push image
 
 # Builds the multi-arch image (amd64 + arm64) and pushes it to Docker Hub.
-#  - on a version tag (v1.2.3)  -> tags latest, 1.2.3, 1.2
-#  - every Monday               -> rebuilds latest to pick up new Authelia releases and base-image patches
-#  - manually (Actions tab)     -> rebuilds latest
+#  - manually (Actions tab > Run workflow, or `gh workflow run docker.yml`) -> rebuilds latest with the
+#    newest Authelia release and base-image patches
+#  - on a version tag (v1.2.3) you push yourself -> tags latest, 1.2.3, 1.2
+# It never runs on its own schedule.
 #
 # Required repository secrets (Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME   your Docker Hub user name
@@ -12,8 +13,6 @@ name: Build and push image
 on:
   push:
     tags: ["v*"]
-  schedule:
-    - cron: "23 3 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -41,7 +40,9 @@ jobs:
         run: |
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
-          echo "BUILD_STAMP=$(date -u +%G-W%V)" >> "$GITHUB_ENV"
+          # Changes daily, so a run on a new day re-fetches the latest Authelia release and dependencies
+          # instead of reusing a cached build stage.
+          echo "BUILD_STAMP=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
 

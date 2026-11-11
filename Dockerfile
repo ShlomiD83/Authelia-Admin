@@ -7,7 +7,7 @@
 FROM cgr.dev/chainguard/go:latest-dev AS authelia-build
 USER root
 RUN apk add --no-cache git build-base
-# Changing this value (CI passes the ISO week) forces a fresh clone and fresh dependency versions
+# Changing this value (CI passes the date) forces a fresh clone and fresh dependency versions
 # instead of a cached layer, so scheduled builds really pick up new Authelia releases and patched libraries.
 ARG BUILD_STAMP=manual
 RUN set -eux; \

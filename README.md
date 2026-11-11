@@ -243,9 +243,8 @@ You don't have to build anything: use the published image in compose and drop th
 
 `.github/workflows/docker.yml` builds the image for amd64 (on an amd64 runner) and arm64 (on a native arm64 runner) and publishes one multi-arch tag to Docker Hub (only arm64 has been tested so far):
 
-- a version tag such as `v1.2.3` publishes `latest`, `1.2.3` and `1.2`
-- a weekly run (Mondays) rebuilds `latest`, so new Authelia releases and base-image security patches are picked up without any change to the repository
-- the **Run workflow** button on the Actions tab rebuilds on demand
+- it only runs on demand, never on a schedule: the **Run workflow** button on the Actions tab (or `gh workflow run docker.yml`) rebuilds `latest` with the newest Authelia release and base-image security patches
+- pushing a version tag such as `v1.2.3` also runs it and publishes `latest`, `1.2.3` and `1.2`
 
 To use it in your own fork, add two repository secrets (Settings > Secrets and variables > Actions): `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read and Write scope). The image is published as `<your user>/authelia-admin`. Then use it in compose instead of building:
 
