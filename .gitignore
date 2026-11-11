@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+*.env
+authelia-config/
+backups/
+admin_passkeys.json
+.restart-request

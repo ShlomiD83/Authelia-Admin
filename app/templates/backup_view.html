@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_diff.html" import show %}
+{% block body %}
+<div class="card">
+  <h1>{{ name }}</h1>
+  <h2>Changes if restored</h2>
+  {% if diff %}{{ show(diff) }}{% else %}<p style="color:var(--mut);margin:0 0 1rem">Identical to the current file.</p>{% endif %}
+  <h2>Backup content</h2>
+  <textarea readonly style="min-height:50vh">{{ content }}</textarea>
+  <form method="post" class="row" data-confirm="Restore this backup over the live file? The current file is backed up first.">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="btn">Restore</button><a class="btn sec" href="{{ url_for('backups') }}">Back</a>
+  </form>
+  <form method="post" action="{{ url_for('backup_delete', name=name) }}" class="row" data-confirm="Permanently delete {{ name }}? This cannot be undone.">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="btn bad">Delete this backup</button>
+  </form>
+</div>
+{% endblock %}

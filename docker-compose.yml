@@ -1,0 +1,35 @@
+services:
+  authelia-admin:
+    build: .
+    image: authelia-admin:latest        # change to youruser/authelia-admin:latest if you push it to a registry
+    container_name: authelia-admin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"           # put behind a TLS reverse proxy; do not expose to the internet
+    environment:
+      # --- admin login (one of the password options is required) ---
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: "change-me-now"   # better: ADMIN_PASSWORD_HASH with every $ doubled ($$), see README
+      SECRET_KEY: "generate-with-openssl-rand-hex-32"
+      COOKIE_SECURE: "true"             # "false" only for plain-HTTP testing
+      TZ: UTC                           # e.g. Europe/London; used for backup file names
+
+      # --- optional: second step and passkeys ---
+      # ADMIN_TOTP_SECRET: "BASE32SECRET"          # generate and confirm it on the Security page
+      # ADMIN_RP_ID: admin.example.com             # passkeys: your domain (HTTPS required)
+      # ADMIN_ORIGIN: https://admin.example.com
+      # ADMIN_PASSKEY_ONLY: "true"                 # turn the password off once a passkey is registered
+
+      # --- optional: restart button (flag file + host systemd path unit, see README) ---
+      # RESTART_FLAG_FILE: /config/.restart-request
+
+      # --- optional: Reset 2FA, if the storage key is not written in configuration.yml ---
+      # AUTHELIA_STORAGE_ENCRYPTION_KEY: "..."
+
+      # --- optional: per-client login lockout behind a reverse proxy ---
+      # Only if the proxy is the only way to reach this container (bind to 127.0.0.1 or a private network).
+      # TRUST_PROXY: "1"
+    volumes:
+      # The folder Authelia itself uses (configuration.yml, users_database.yml, db.sqlite3).
+      - ./authelia-config:/config
+    user: "1001:100"                    # UID:GID that can write the Authelia folder

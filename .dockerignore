@@ -1,0 +1,12 @@
+.git
+.github
+.gitignore
+.dockerignore
+*.md
+preview.html
+docker-compose.yml
+authelia-config
+backups
+.env
+**/__pycache__
+**/*.pyc

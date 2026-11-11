@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ic %}
+{% block body %}
+{% set ns = namespace(admins=0, disabled=0) %}
+{% for n, u in users.items() %}
+  {% if 'admins' in (u.groups or []) %}{% set ns.admins = ns.admins + 1 %}{% endif %}
+  {% if u.disabled %}{% set ns.disabled = ns.disabled + 1 %}{% endif %}
+{% endfor %}
+<div class="pagehead">
+  <h1>Users</h1>
+  <a class="btn" href="{{ url_for('user_new') }}">{{ ic('plus') }}New user</a>
+</div>
+<div class="stats">
+  <div class="stat"><span>Users</span><b>{{ users|length }}</b></div>
+  <div class="stat"><span>Admins</span><b>{{ ns.admins }}</b></div>
+  <div class="stat"><span>Disabled</span><b>{{ ns.disabled }}</b></div>
+</div>
+<div class="card">
+  <div class="search">{{ ic('search') }}<input type="search" placeholder="Search users" data-filter="#users-table" aria-label="Search users"></div>
+  <table class="stack" id="users-table">
+    <thead><tr><th>User</th><th>Name</th><th>Email</th><th>Groups</th><th></th></tr></thead>
+    <tbody>
+    {% for name, u in users|dictsort %}
+    <tr class="{{ 'off' if u.disabled }}">
+      <td data-label="User"><span class="who"><span class="av c{{ name|length % 5 }}">{{ (u.displayname or name)[:2]|upper }}</span><span><a href="{{ url_for('user_edit', name=name) }}">{{ name }}</a>{% if u.disabled %} <span class="tag dis">disabled</span>{% endif %}</span></span></td>
+      <td data-label="Name">{{ u.displayname }}</td>
+      <td data-label="Email">{{ u.email }}</td>
+      <td data-label="Groups"><span>{% for g in u.groups or [] %}<span class="tag">{{ g }}</span>{% endfor %}</span></td>
+      <td><a class="btn sec" href="{{ url_for('user_edit', name=name) }}">Edit</a></td>
+    </tr>
+    {% else %}<tr><td colspan="5">No users yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

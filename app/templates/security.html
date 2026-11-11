@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ic %}
+{% block body %}
+<div class="pagehead"><h1>Security</h1></div>
+<div class="card" data-csrf="{{ csrf_token() }}">
+  <h2>Passkeys</h2>
+  {% if not lib_ok %}
+  <div class="flash error">The passkey library isn't installed in this image. Rebuild the image to enable passkeys.</div>
+  {% elif not enabled %}
+  <p style="margin:0 0 .5rem">Passkeys aren't configured yet. Add these to this container's environment and recreate it:</p>
+  <pre>ADMIN_RP_ID: admin.example.com
+ADMIN_ORIGIN: https://admin.example.com</pre>
+  <p style="color:var(--mut);margin:.5rem 0 0">Use your real domain. The site has to be opened over HTTPS on exactly that domain, and passkeys are tied to it.</p>
+  {% else %}
+  <p style="color:var(--mut);margin:0 0 .75rem">Sign in with Face ID, a fingerprint, a PIN, or a security key instead of a password. Domain: <code>{{ rp_id }}</code></p>
+  {% if passkeys %}
+  <ul class="pklist">
+    {% for p in passkeys %}
+    <li>
+      <span class="av">{{ ic('key') }}</span>
+      <div class="grow"><strong>{{ p.name }}</strong>
+        <div class="meta">Added {{ p.created[:10] }} · Last used {{ p.last_used[:16]|replace('T', ' ') if p.last_used else 'never' }}{% if p.synced %} · synced{% endif %}</div></div>
+      <form method="post" action="{{ url_for('pk_delete', pid=p.id) }}" data-confirm="Remove the passkey '{{ p.name }}'?">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="btn sec">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p style="margin:0 0 .5rem">No passkeys yet.</p>
+  {% endif %}
+  <div class="row">
+    <input type="text" id="pk-name" class="grow" placeholder="Name, for example Pixel phone" maxlength="60" aria-label="Passkey name">
+    <button type="button" class="btn" data-pk-register>{{ ic('plus') }}Add passkey</button>
+  </div>
+  <p class="msg" id="pk-msg" role="status"></p>
+  <p style="color:var(--mut);margin:.5rem 0 0">
+    Register at least two (for example your phone and a laptop or security key) so losing one doesn't lock you out.
+    {% if passkey_only %}Passkey-only mode is on: password sign-in is off while at least one passkey exists.
+    {% else %}To turn the password off once you trust your passkeys, set <code>ADMIN_PASSKEY_ONLY: "true"</code>.{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Authenticator app (TOTP)</h2>
+  {% if totp_enabled %}
+  <p style="margin:0 0 .5rem"><span class="tag">enabled</span> Password sign-in also asks for a 6-digit code. Passkey sign-in doesn't, because a passkey already counts as two factors.</p>
+  <p style="color:var(--mut);margin:0 0 .75rem">To change or turn it off, edit or remove <code>ADMIN_TOTP_SECRET</code> in your compose file and recreate the container.</p>
+  {% else %}
+  <p style="margin:0 0 .75rem">Add a second step to password sign-in with an authenticator app (Google Authenticator, Authy, Microsoft Authenticator, 1Password and similar).</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('totp_new') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="btn sec">{{ ic('key') }}{{ 'Generate a new secret' if totp_enabled else 'Set up authenticator' }}</button>
+  </form>
+  {% if new_secret %}
+  <div style="margin-top:1rem">
+    {% if qr %}<div class="qr">{{ qr|safe }}</div>{% endif %}
+    <p style="margin:.75rem 0 .25rem">Scan the QR code, or enter this key by hand:</p>
+    <code class="secret">{{ new_secret }}</code>
+    <form method="post" action="{{ url_for('totp_check') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="secret" value="{{ new_secret }}">
+      <label>Enter the 6-digit code your app shows to confirm it works</label>
+      <div class="row" style="margin-top:0"><input type="text" name="code" class="grow" inputmode="numeric" autocomplete="off" pattern="[0-9 ]*" maxlength="7" placeholder="123456" required>
+        <button class="btn">Verify code</button></div>
+    </form>
+    {% if verified %}
+    <p style="margin:1rem 0 .25rem">It works. Add this to your compose environment, then recreate the container to switch it on:</p>
+    <pre>ADMIN_TOTP_SECRET: "{{ new_secret }}"</pre>
+    <p style="color:var(--mut);margin:0">Keep this secret private. Keep a way back in: removing that line turns TOTP off again.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

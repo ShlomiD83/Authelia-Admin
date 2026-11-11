@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ic %}
+{% block body %}
+<div style="text-align:center;margin-bottom:1.25rem">
+  <div class="av" style="width:56px;height:56px;margin:0 auto .75rem"><span style="transform:scale(1.8);display:flex">{{ ic('shield') }}</span></div>
+  <h1 style="margin:0">Authelia Admin</h1>
+  <div style="color:var(--mut)">Sign in to manage users and configuration</div>
+</div>
+<div class="card" data-csrf="{{ csrf_token() }}">
+  {% if password_ok %}
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label style="margin-top:0">Username</label><input type="text" name="username" autofocus required autocomplete="username">
+    <label>Password</label><input type="password" name="password" required autocomplete="current-password">
+    <div class="row"><button class="btn grow">Sign in</button></div>
+  </form>
+  {% endif %}
+  {% if show_passkey %}
+  {% if password_ok %}<div class="divider">or</div>{% endif %}
+  <button type="button" class="btn {{ 'sec' if password_ok }}" style="width:100%" data-pk-login>{{ ic('key') }}Sign in with a passkey</button>
+  <p class="msg" id="pk-msg" role="status"></p>
+  {% endif %}
+</div>
+{% endblock %}

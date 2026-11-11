@@ -1,0 +1,3 @@
+{% macro show(diff) -%}
+<pre class="diff">{% for cls, line in diff %}<span class="{{ cls }}">{{ line or ' ' }}</span>{% endfor %}</pre>
+{%- endmacro %}

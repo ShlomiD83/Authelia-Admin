@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h2>Database</h2>
+  <p style="color:var(--mut);margin:0 0 .5rem">SQLite storage (TOTP / WebAuthn registrations, 2FA preferences): <code>{{ db_file }}</code></p>
+  {% if not db_exists %}<div class="flash error">Database file not found at that path.</div>{% endif %}
+  <form method="post" action="{{ url_for('backup_db') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="btn" {{ 'disabled' if not db_exists }}>Back up database now</button>
+  </form>
+  <p style="color:var(--mut);margin:.75rem 0 0">Database backups contain 2FA secrets (encrypted with your storage encryption key; keep that key separately). To restore: stop Authelia, download the backup, and replace the database file with it.</p>
+</div>
+{% for g in groups %}
+<div class="card">
+  <details open>
+    <summary><h2 style="margin:0">{{ g.title }}</h2><span class="tag">{{ g['items']|length }}</span><span class="hint">{{ g.hint }}</span></summary>
+    <table class="stack" style="margin-top:.5rem">
+      <thead><tr><th>File</th><th>Size</th><th></th></tr></thead>
+      <tbody>
+      {% for i in g['items'] %}
+      <tr><td data-label="File">{{ i.name }}</td><td data-label="Size">{{ (i.size / 1024)|round(1) }} KB</td>
+        <td>
+          {% if i.db %}
+          <a class="btn sec" href="{{ url_for('backup_download', name=i.name) }}">Download</a>
+          {% else %}
+          <a class="btn sec" href="{{ url_for('backup_view', name=i.name) }}">View / restore</a>
+          {% endif %}
+          <form method="post" action="{{ url_for('backup_delete', name=i.name) }}" class="inline" data-confirm="Permanently delete {{ i.name }}? This cannot be undone.">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="btn bad">Delete</button>
+          </form>
+        </td></tr>
+      {% else %}<tr><td colspan="3">No backups yet.{% if g.key == 'config' or g.key == 'users' %} One is created on every save.{% endif %}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </details>
+</div>
+{% endfor %}
+{% endblock %}

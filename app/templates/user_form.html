@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h1>{{ 'Edit ' ~ name if user else 'New user' }}</h1>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    {% if not user %}
+    <label>Username</label><input type="text" name="username" required pattern="[A-Za-z0-9._-]{1,64}">
+    {% endif %}
+    <label>Display name</label><input type="text" name="displayname" value="{{ user.displayname if user else '' }}">
+    <label>Email</label><input type="email" name="email" value="{{ user.email if user else '' }}">
+    <label>Groups (comma separated)</label><input type="text" name="groups" value="{{ (user.groups or [])|join(', ') if user else '' }}">
+    {% if user %}
+    <label><input type="checkbox" name="disabled" {{ 'checked' if user.disabled }}> Disabled</label>
+    {% else %}
+    <label>Password (min 8)</label>
+    <div class="row" style="margin:0"><input id="pw" class="grow" type="password" name="password" required minlength="8" autocomplete="new-password">
+      <button type="button" class="btn sec" data-genpw="pw">Generate</button></div>
+    {% endif %}
+    <div class="row"><button class="btn">{{ 'Save' if user else 'Create' }}</button>
+      <a class="btn sec" href="{{ url_for('users') }}">Back</a></div>
+  </form>
+</div>
+
+{% if user %}
+<div class="card">
+  <h2>Set password</h2>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="password">
+    <div class="row" style="margin:0"><input id="pw" class="grow" type="password" name="password" required minlength="8" autocomplete="new-password">
+      <button type="button" class="btn sec" data-genpw="pw">Generate</button>
+      <button class="btn">Update</button></div>
+  </form>
+</div>
+<div class="card">
+  <h2>Two-factor</h2>
+  <p style="color:var(--mut)">Removes this user's TOTP and WebAuthn devices from Authelia's SQLite storage. They'll re-register at next login.</p>
+  <form method="post" action="{{ url_for('user_reset_2fa', name=name) }}" data-confirm="Reset 2FA devices for {{ name }}?">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="btn sec">Reset 2FA</button>
+  </form>
+</div>
+<div class="card">
+  <h2>Danger zone</h2>
+  <form method="post" data-confirm="Delete user {{ name }}? This cannot be undone (a backup of the file is kept).">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete">
+    <button class="btn bad">Delete user</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
