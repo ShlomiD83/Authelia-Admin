@@ -3,7 +3,7 @@
 A small, self-hosted web UI for managing an [Authelia](https://www.authelia.com/) instance that uses the
 **file user backend** and **SQLite storage**: users, passwords, `configuration.yml`, backups and 2FA resets, from your browser (phone included).
 
-Runs as a single container with a distroless runtime image and no pinned Authelia version. Developed and tested on a Raspberry Pi (arm64). The Dockerfile has nothing architecture-specific and the CI workflow also builds amd64, but amd64 has not been tested yet.
+Runs as a single container with a distroless runtime image and no pinned Authelia version. A prebuilt multi-arch image for **amd64 and arm64** is published on Docker Hub as [`romekd/authelia-admin`](https://hub.docker.com/r/romekd/authelia-admin). It is developed and tested on a Raspberry Pi (arm64); the amd64 image is built by CI from the same Dockerfile but has not been tested yet.
 
 ## Features
 
@@ -234,6 +234,12 @@ docker buildx build --platform linux/amd64,linux/arm64 -t youruser/authelia-admi
 ```
 
 ## Prebuilt image (GitHub Actions)
+
+You don't have to build anything: use the published image in compose and drop the `build: .` line.
+
+```yaml
+    image: romekd/authelia-admin:latest
+```
 
 `.github/workflows/docker.yml` builds the image for amd64 (on an amd64 runner) and arm64 (on a native arm64 runner) and publishes one multi-arch tag to Docker Hub (only arm64 has been tested so far):
 
