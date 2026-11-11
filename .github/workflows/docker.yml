@@ -114,3 +114,17 @@ jobs:
 
       - name: Inspect
         run: docker buildx imagetools inspect ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+      # Copy the README to the Docker Hub page. Updating the page needs a token with Read, Write and Delete
+      # scope; if yours is narrower this step fails without affecting the published image.
+      - uses: actions/checkout@v4
+
+      - name: Sync Docker Hub description
+        continue-on-error: true
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          short-description: "Web UI to manage Authelia: users, config, backups, 2FA reset, passkeys and TOTP. amd64 and arm64."
+          readme-filepath: ./README.md
