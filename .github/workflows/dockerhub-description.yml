@@ -1,0 +1,32 @@
+name: Update Docker Hub description
+
+# Copies README.md and a short description to the Docker Hub page. No image is built, so it takes seconds.
+# Runs when README.md changes on main, or manually (Actions tab > Run workflow).
+#
+# Updating the page needs a Docker Hub token with Read, Write and Delete scope in the
+# DOCKERHUB_TOKEN secret (the image workflow itself only needs Read and Write).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - .github/workflows/dockerhub-description.yml
+
+permissions:
+  contents: read
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/authelia-admin
+          short-description: "Web UI to manage Authelia: users, config, backups, 2FA reset, passkeys and TOTP. amd64 and arm64."
+          readme-filepath: ./README.md
