@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Authelia Admin</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 <style>
   :root { color-scheme: light; --bg:#f4f5fa; --card:#fff; --fg:#1e2235; --mut:#6b7185; --pri:#5b5bf0; --pri-soft:#e9e9ff; --pri-fg:#3a3ad0; --bad:#dc2626; --ok:#16a34a; --bd:#e6e8f0; --side:#1e2235; --side-fg:#a9aec6; --side-on:#2c3050; --shadow:0 1px 2px rgba(20,24,50,.06); }
@@ -130,7 +131,7 @@
 {% if session.auth %}
 <div class="shell">
 <aside class="side">
-  <div class="brand">{{ ic('shield') }}<span>Authelia Admin</span></div>
+  <div class="brand"><img src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="28" height="28"><span>Authelia Admin</span></div>
   <nav>
     <a href="{{ url_for('users') }}" class="{{ 'on' if page=='users' }}">{{ ic('users') }}<span>Users</span></a>
     <a href="{{ url_for('config') }}" class="{{ 'on' if page=='config' }}">{{ ic('config') }}<span>Configuration</span></a>

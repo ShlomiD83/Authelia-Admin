@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="t">
+  <title id="t">Authelia Admin</title>
+  <path d="M64 8 20 24v38c0 28 18 48 44 58V8Z" fill="#4747d6"/>
+  <path d="M64 8l44 16v38c0 28-18 48-44 58V8Z" fill="#7c7cff"/>
+  <circle cx="64" cy="55" r="13" fill="#fff"/>
+  <path d="M57.5 63h13l4 30h-21l4-30Z" fill="#fff"/>
+  <circle cx="64" cy="55" r="5" fill="#4747d6"/>
+  <path d="M62 58h4l1.6 20h-7.2L62 58Z" fill="#4747d6"/>
+</svg>

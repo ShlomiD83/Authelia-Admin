@@ -2,7 +2,7 @@
 {% from "_icons.html" import ic %}
 {% block body %}
 <div style="text-align:center;margin-bottom:1.25rem">
-  <div class="av" style="width:56px;height:56px;margin:0 auto .75rem"><span style="transform:scale(1.8);display:flex">{{ ic('shield') }}</span></div>
+  <img src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="64" height="64" style="display:block;margin:0 auto .75rem">
   <h1 style="margin:0">Authelia Admin</h1>
   <div style="color:var(--mut)">Sign in to manage users and configuration</div>
 </div>

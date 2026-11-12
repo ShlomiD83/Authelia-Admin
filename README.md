@@ -1,4 +1,9 @@
-# Authelia Admin
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/logo-light.svg" alt="Authelia Admin" width="360">
+  </picture>
+</p>
 
 A small, self-hosted web UI for managing an [Authelia](https://www.authelia.com/) instance that uses the
 **file user backend** and **SQLite storage**: users, passwords, `configuration.yml`, backups and 2FA resets, from your browser (phone included).
