@@ -4,7 +4,8 @@ name: Build and push image
 #  - manually (Actions tab > Run workflow, or `gh workflow run docker.yml`) -> rebuilds latest with the
 #    newest Authelia release and base-image patches
 #  - on a version tag (v1.2.3) you push yourself -> tags latest, 1.2.3, 1.2
-# It never runs on its own schedule.
+#  - from the weekly CVE check (cve-check.yml), only when it finds fixable vulnerabilities
+# It has no schedule of its own.
 #
 # Required repository secrets (Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME   your Docker Hub user name
@@ -14,6 +15,7 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+  workflow_call:   # used by the weekly CVE check (cve-check.yml) when it finds fixable vulnerabilities
 
 permissions:
   contents: read

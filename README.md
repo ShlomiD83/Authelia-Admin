@@ -248,8 +248,9 @@ You don't have to build anything: use the published image in compose and drop th
 
 `.github/workflows/docker.yml` builds the image for amd64 (on an amd64 runner) and arm64 (on a native arm64 runner) and publishes one multi-arch tag to Docker Hub (only arm64 has been tested so far):
 
-- it only runs on demand, never on a schedule: the **Run workflow** button on the Actions tab (or `gh workflow run docker.yml`) rebuilds `latest` with the newest Authelia release and base-image security patches
+- the **Run workflow** button on the Actions tab (or `gh workflow run docker.yml`) rebuilds `latest` with the newest Authelia release and base-image security patches
 - pushing a version tag such as `v1.2.3` also runs it and publishes `latest`, `1.2.3` and `1.2`
+- the weekly CVE check (below) runs it when the published image has fixable vulnerabilities
 
 To use it in your own fork, add two repository secrets (Settings > Secrets and variables > Actions): `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read and Write scope). The image is published as `<your user>/authelia-admin`. Then use it in compose instead of building:
 
@@ -258,6 +259,18 @@ To use it in your own fork, add two repository secrets (Settings > Secrets and v
 ```
 
 The free native arm64 runner is available for public repositories. In a private repository, switch the arm64 runner to one you have access to, or use QEMU emulation (much slower).
+
+## Automatic security updates
+
+`.github/workflows/cve-check.yml` runs every Monday:
+
+1. scans the published `latest` image (amd64 and arm64) with Docker Scout for vulnerabilities that already have a fix
+2. if it finds any, rebuilds and publishes the image, which pulls the patched base images and the latest Authelia release and Go libraries
+3. scans the new image again; the run fails (and GitHub emails you) if fixable vulnerabilities remain, usually because the fix hasn't reached the base images yet
+
+You can also start it from the Actions tab, with an option to force a rebuild. Python packages are pinned in `requirements.txt`, so they are not changed automatically: Dependabot (`.github/dependabot.yml`) opens weekly pull requests for them and for the GitHub Actions versions.
+
+GitHub pauses scheduled workflows in repositories with no activity for 60 days (it emails you first); re-enable it from the Actions tab if that happens.
 
 ## Security notes
 

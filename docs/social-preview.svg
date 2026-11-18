@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="t">
+  <title id="t">Authelia Admin: web UI to manage Authelia</title>
+  <rect width="1280" height="640" fill="#14161b"/>
+  <rect x="0" y="600" width="1280" height="40" fill="#1e2235"/>
+  <g transform="translate(110 128) scale(3)">
+    <path d="M64 8 20 24v38c0 28 18 48 44 58V8Z" fill="#4747d6"/>
+    <path d="M64 8l44 16v38c0 28-18 48-44 58V8Z" fill="#7c7cff"/>
+    <circle cx="64" cy="55" r="13" fill="#fff"/>
+    <path d="M57.5 63h13l4 30h-21l4-30Z" fill="#fff"/>
+    <circle cx="64" cy="55" r="5" fill="#4747d6"/>
+    <path d="M62 58h4l1.6 20h-7.2L62 58Z" fill="#4747d6"/>
+  </g>
+  <g font-family="Inter, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif">
+    <text x="580" y="232" font-size="76" font-weight="700" fill="#e6e8ee" letter-spacing="-1.5">Authelia Admin</text>
+    <text x="582" y="296" font-size="32" fill="#a9aec6">Manage users, passwords, config,</text>
+    <text x="582" y="340" font-size="32" fill="#a9aec6">backups and 2FA from your browser.</text>
+    <g font-size="24" font-weight="500" fill="#c3c3ff">
+      <rect x="580" y="390" width="250" height="48" rx="24" fill="#262650"/>
+      <text x="705" y="422" text-anchor="middle">Users &amp; passwords</text>
+      <rect x="844" y="390" width="250" height="48" rx="24" fill="#262650"/>
+      <text x="969" y="422" text-anchor="middle">Config validation</text>
+      <rect x="580" y="452" width="150" height="48" rx="24" fill="#262650"/>
+      <text x="655" y="484" text-anchor="middle">Backups</text>
+      <rect x="744" y="452" width="250" height="48" rx="24" fill="#262650"/>
+      <text x="869" y="484" text-anchor="middle">Passkeys &amp; TOTP</text>
+    </g>
+    <text x="582" y="560" font-size="24" fill="#8e95ab">Docker · amd64 · arm64</text>
+    <text x="640" y="627" font-size="20" fill="#8e95ab" text-anchor="middle">github.com/ShlomiD83/Authelia-Admin</text>
+  </g>
+</svg>
