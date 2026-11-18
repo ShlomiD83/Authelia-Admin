@@ -268,7 +268,11 @@ The free native arm64 runner is available for public repositories. In a private 
 2. if it finds any, rebuilds and publishes the image, which pulls the patched base images and the latest Authelia release and Go libraries
 3. scans the new image again; the run fails (and GitHub emails you) if fixable vulnerabilities remain, usually because the fix hasn't reached the base images yet
 
-You can also start it from the Actions tab, with an option to force a rebuild. Python packages are pinned in `requirements.txt`, so they are not changed automatically: Dependabot (`.github/dependabot.yml`) opens weekly pull requests for them and for the GitHub Actions versions.
+You can also start it from the Actions tab, with an option to force a rebuild.
+
+Python packages are pinned in `requirements.txt`. Dependabot (`.github/dependabot.yml`) opens weekly pull requests for them and for the GitHub Actions versions. For **patch and minor** updates, `.github/workflows/dependabot-automerge.yml` builds the image once as a check, merges the pull request, and (for Python updates) publishes a new image. **Major** updates stay open for you to review.
+
+Every published build is also tagged with its date, for example `romekd/authelia-admin:2026.11.18`. The project has no automated tests, so an update that breaks the app could be published; to control when your server updates, use a date tag instead of `latest` and move it forward after checking the new image.
 
 GitHub pauses scheduled workflows in repositories with no activity for 60 days (it emails you first); re-enable it from the Actions tab if that happens.
 

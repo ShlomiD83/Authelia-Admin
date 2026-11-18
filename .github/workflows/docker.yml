@@ -5,7 +5,9 @@ name: Build and push image
 #    newest Authelia release and base-image patches
 #  - on a version tag (v1.2.3) you push yourself -> tags latest, 1.2.3, 1.2
 #  - from the weekly CVE check (cve-check.yml), only when it finds fixable vulnerabilities
-# It has no schedule of its own.
+#  - after Dependabot auto-merges a Python package update (dependabot-automerge.yml)
+# It has no schedule of its own. Every build is also tagged with its date (e.g. 2026.11.18), so you
+# can pin a known-good image or roll back.
 #
 # Required repository secrets (Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME   your Docker Hub user name
@@ -19,6 +21,12 @@ on:
 
 permissions:
   contents: read
+
+# One build at a time; a newer request waits (and replaces an older waiting one) instead of running
+# in parallel, so the last build always publishes the latest code.
+concurrency:
+  group: image-build
+  cancel-in-progress: false
 
 env:
   IMAGE_NAME: authelia-admin
@@ -104,6 +112,7 @@ jobs:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
+            type=raw,value={{date 'YYYY.MM.DD'}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 

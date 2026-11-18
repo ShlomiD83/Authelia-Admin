@@ -1,0 +1,66 @@
+name: Dependabot auto-merge
+
+# For Dependabot pull requests with PATCH or MINOR updates:
+#   1. build the image once (amd64, not pushed) to check it still builds and its startup checks pass
+#   2. merge the pull request
+#   3. for Python package updates, start the image workflow so the update reaches Docker Hub
+# MAJOR updates (for example gunicorn 26 -> 27) are left open for you to review and merge by hand.
+
+on: pull_request
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check the update
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      update-type: ${{ steps.meta.outputs.update-type }}
+      ecosystem: ${{ steps.meta.outputs.package-ecosystem }}
+    steps:
+      - name: Read the update details
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build the image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=linux-amd64
+
+  merge:
+    name: Merge and publish
+    needs: check
+    if: >-
+      needs.check.outputs.update-type == 'version-update:semver-patch' ||
+      needs.check.outputs.update-type == 'version-update:semver-minor'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Merge the pull request
+        run: gh pr merge --squash --delete-branch "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A merge made with GITHUB_TOKEN does not trigger other workflows by itself, so start the image
+      # build explicitly. Builds are queued (see concurrency in docker.yml), so several merges in a row
+      # end in one build of the latest main.
+      - name: Build and publish the image
+        if: needs.check.outputs.ecosystem == 'pip'
+        run: gh workflow run docker.yml --repo "$GITHUB_REPOSITORY" --ref main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
