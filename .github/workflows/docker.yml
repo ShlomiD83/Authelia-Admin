@@ -54,7 +54,7 @@ jobs:
           # instead of reusing a cached build stage.
           echo "BUILD_STAMP=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v4
 
