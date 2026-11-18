@@ -272,7 +272,7 @@ You can also start it from the Actions tab, with an option to force a rebuild.
 
 Python packages are pinned in `requirements.txt`. Dependabot (`.github/dependabot.yml`) opens weekly pull requests for them and for the GitHub Actions versions. For **patch and minor** updates, `.github/workflows/dependabot-automerge.yml` builds the image once as a check, merges the pull request, and (for Python updates) publishes a new image. **Major** updates stay open for you to review.
 
-Every published build is also tagged with its date, for example `romekd/authelia-admin:2026.11.18`. The project has no automated tests, so an update that breaks the app could be published; to control when your server updates, use a date tag instead of `latest` and move it forward after checking the new image.
+Every build overwrites only `latest`; it also gets its own permanent tag with the build date and time in UTC, for example `romekd/authelia-admin:2026.11.18-1408`, which is never overwritten. The project has no automated tests, so an update that breaks the app could be published; to control when your server updates, use a date tag instead of `latest` and move it forward after checking the new image.
 
 GitHub pauses scheduled workflows in repositories with no activity for 60 days (it emails you first); re-enable it from the Actions tab if that happens.
 
