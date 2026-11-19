@@ -4,7 +4,8 @@ name: Dependabot auto-merge
 #   1. build the image once (amd64, not pushed) to check it still builds and its startup checks pass
 #   2. merge the pull request
 #   3. for Python package updates, start the image workflow so the update reaches Docker Hub
-# MAJOR updates (for example gunicorn 26 -> 27) are left open for you to review and merge by hand.
+# MAJOR updates (for example gunicorn 26 -> 27) are left open, labelled `major-update`, and the repository
+# owner is mentioned in a comment so GitHub notifies you to review and merge them by hand.
 
 on: pull_request
 
@@ -63,4 +64,29 @@ jobs:
         if: needs.check.outputs.ecosystem == 'pip'
         run: gh workflow run docker.yml --repo "$GITHUB_REPOSITORY" --ref main
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Major updates are not merged automatically. Mention the repository owner on the pull request so
+  # GitHub sends a direct notification (bell icon, and email with the default settings), and label it.
+  # Runs once when the pull request is opened or reopened, not on every Dependabot rebase.
+  notify-major:
+    name: Ask for review (major update)
+    needs: check
+    if: >-
+      needs.check.outputs.update-type == 'version-update:semver-major' &&
+      github.event.action != 'synchronize'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Label and mention the owner
+        run: |
+          gh label create major-update --repo "$GITHUB_REPOSITORY" --color D93F0B \
+            --description "Major dependency update, needs manual review" --force
+          gh pr edit "$PR_URL" --add-label major-update
+          gh pr comment "$PR_URL" --body "@${OWNER} this is a **major** version update, so it was not merged automatically. The test build passed; please review the release notes and merge it if it looks fine."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          OWNER: ${{ github.repository_owner }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
