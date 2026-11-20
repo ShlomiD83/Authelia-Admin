@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-20 (image `2026.11.20-1307`)
+
 ### Added
 - **Dashboard** as the home page (the logo and the new first sidebar item lead there): whether Authelia
   is up and the configuration passes validation, when the configuration last changed and whether that was
