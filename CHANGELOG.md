@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-20 (image `2026.11.20-1247`)
+
 ### Fixed
 - Sign-in and lockout times on the Activity and Users pages were 2 hours ahead (by the offset of
   Authelia's time zone) when Authelia's container has `TZ` set: the time-zone offset Authelia stores with
