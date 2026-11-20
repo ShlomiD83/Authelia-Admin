@@ -1,0 +1,4 @@
+{% set problem = audit_problem() %}
+{% if problem %}
+<div class="flash error">Admin actions aren't being recorded: couldn't write the action log: {{ problem }}. Check that the container's user can write it, for example with: sudo chown {{ uid_gid }} &lt;your Authelia folder&gt;/admin_audit.log</div>
+{% endif %}

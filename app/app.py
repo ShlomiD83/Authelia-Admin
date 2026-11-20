@@ -200,6 +200,8 @@ def csrf_token():
 app.jinja_env.globals["csrf_token"] = csrf_token
 app.jinja_env.globals["can_restart"] = bool(AUTHELIA_CONTAINER or RESTART_FLAG_FILE)
 app.jinja_env.globals["tzname"] = str(TZINFO)
+app.jinja_env.globals["audit_problem"] = lambda: audit_error
+app.jinja_env.globals["uid_gid"] = f"{os.getuid()}:{os.getgid()}"
 app.jinja_env.globals["audit_file"] = os.environ.get("AUDIT_LOG_FILE") or os.path.join(CONFIG_DIR, "admin_audit.log")
 
 
@@ -253,6 +255,12 @@ def login_required(f):
 # last 2 MB of history (thousands of entries) is available.
 AUDIT_FILE = os.environ.get("AUDIT_LOG_FILE") or os.path.join(CONFIG_DIR, "admin_audit.log")
 AUDIT_MAX_BYTES = 1_000_000
+# How far back the Activity page goes (sign-ins and admin actions), and a safety cap on rows per list.
+try:
+    ACTIVITY_DAYS = max(1, int(os.environ.get("ACTIVITY_DAYS", "30")))
+except ValueError:
+    ACTIVITY_DAYS = 30
+ACTIVITY_MAX_ROWS = 2000
 
 
 def audit(action, target="", detail=""):
@@ -262,17 +270,28 @@ def audit(action, target="", detail=""):
              "via": session.get("via", "") if session else "",
              "ip": request.remote_addr if request else "", "action": action,
              "target": str(target)[:200], "detail": str(detail)[:500]}
+    global audit_error
     try:
         if os.path.exists(AUDIT_FILE) and os.path.getsize(AUDIT_FILE) > AUDIT_MAX_BYTES:
             os.replace(AUDIT_FILE, AUDIT_FILE + ".1")
         with open(AUDIT_FILE, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except OSError:
+        audit_error = None
+    except OSError as e:
+        # shown on the dashboard and the Activity page, so a broken log doesn't go unnoticed
+        audit_error = f"{e.strerror or e} ({e.filename or AUDIT_FILE})"
         app.logger.exception("Couldn't write the admin action log %s", AUDIT_FILE)
 
 
-def read_audit(limit=200):
-    """Newest first."""
+audit_error = None   # last problem writing the admin action log, None while it works
+if os.path.exists(AUDIT_FILE) and not os.access(AUDIT_FILE, os.W_OK):
+    audit_error = f"Permission denied ({AUDIT_FILE})"
+elif not os.path.exists(AUDIT_FILE) and not os.access(os.path.dirname(AUDIT_FILE) or ".", os.W_OK):
+    audit_error = f"Permission denied ({os.path.dirname(AUDIT_FILE)})"
+
+
+def read_audit(limit=200, days=None):
+    """Newest first; with `days`, only entries from the last `days` days."""
     lines = []
     for path in (AUDIT_FILE, AUDIT_FILE + ".1"):
         try:
@@ -282,14 +301,19 @@ def read_audit(limit=200):
             continue
         if len(lines) >= limit:
             break
+    cutoff = now() - timedelta(days=days) if days else None
     out = []
-    for ln in lines[:limit]:
+    for ln in lines:
+        if len(out) >= limit:
+            break
         try:
             e = json.loads(ln)
             e["when"] = datetime.fromisoformat(e["time"]) if e.get("time") else None
-            out.append(e)
         except (ValueError, KeyError, TypeError):
             continue
+        if cutoff and e["when"] and e["when"] < cutoff:
+            continue
+        out.append(e)
     return out
 
 
@@ -428,7 +452,7 @@ def login():
             session["via"] = "password"
             session.permanent = True
             audit("Signed in")
-            return redirect(url_for("users"))
+            return redirect(url_for("dashboard"))
         _failed[ip] = (count + 1, first)
         audit("Sign-in failed", u[:64], "wrong user name or password")
         flash("Invalid credentials.", "error")
@@ -459,7 +483,7 @@ def login_totp():
             session["via"] = "password + TOTP"
             session.permanent = True
             audit("Signed in")
-            return redirect(url_for("users"))
+            return redirect(url_for("dashboard"))
         _failed[ip] = (count + 1, first)
         audit("Sign-in failed", ADMIN_USER, "wrong TOTP code")
         flash("That code didn't work. Check the code and your phone's clock.", "error")
@@ -641,11 +665,128 @@ def pk_login_verify():
     session["via"] = "passkey: " + pk.get("name", "Passkey")
     session.permanent = True
     audit("Signed in")
-    return jsonify(ok=True, next=url_for("users"))
+    return jsonify(ok=True, next=url_for("dashboard"))
 
 
 # ---------- users ----------
+# ---------- dashboard (home page) ----------
+_BK_STAMP = re.compile(r"\.(\d{8}-\d{6})(?:-\d+)?$")
+
+
+def backup_time(name):
+    """Backups are named <file>.<YYYYMMDD-HHMMSS> in TZ (copies keep the source's mtime, so use the name)."""
+    m = _BK_STAMP.search(name)
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1), "%Y%m%d-%H%M%S").replace(tzinfo=TZINFO)
+    except ValueError:
+        return None
+
+
 @app.route("/")
+@login_required
+def dashboard():
+    all_users = load_users()
+    active = {n: u for n, u in all_users.items() if not u.get("disabled")}
+    users_info = {"total": len(all_users), "disabled": len(all_users) - len(active),
+                  "admins": sum(1 for u in all_users.values() if "admins" in (u.get("groups") or []))}
+
+    # security and recent sign-ins, from Authelia's database (None if it isn't available)
+    sec = None
+    con = authelia_db()
+    if con:
+        try:
+            since = now() - timedelta(hours=24)
+            rows = con.execute("SELECT time, successful, banned, username FROM authentication_logs "
+                               "ORDER BY id DESC LIMIT 1000").fetchall()
+            recent, fail24 = [], 0
+            for r in rows:
+                t = db_time(r["time"])
+                if len(recent) < 5:
+                    recent.append({"time": t, "user": r["username"], "ok": bool(r["successful"]),
+                                   "banned": bool(r["banned"])})
+                if t and t >= since and not r["successful"]:
+                    fail24 += 1
+            sec = {"bans": len(active_bans(con)), "fail24": fail24, "recent": recent}
+        finally:
+            con.close()
+        info = user_security_info() or {}
+        sec["no2fa"] = sum(1 for n in active if not (info.get(n, {}).get("totp") or info.get(n, {}).get("passkeys")))
+        sec["active"] = len(active)
+
+    # backups: count and the latest per file
+    latest, count = {}, 0
+    for f in glob.glob(os.path.join(BACKUP_DIR, "*")):
+        if not os.path.isfile(f):
+            continue
+        count += 1
+        n = os.path.basename(f)
+        base, t = _BK_STAMP.sub("", n), backup_time(n)
+        if t and (base not in latest or t > latest[base]):
+            latest[base] = t
+    backups_info = {"count": count, "latest": sorted(latest.items(), key=lambda kv: kv[1], reverse=True)[:4]}
+
+    # configuration: when it last changed, and whether that was through this app
+    cfg_changed = None
+    try:
+        cfg_changed = datetime.fromtimestamp(os.path.getmtime(CONFIG_FILE), TZINFO)
+    except OSError:
+        pass
+    audit_recent = read_audit(200)
+    cfg_by = None
+    for a in audit_recent:
+        if a.get("action") == "Configuration saved" or (a.get("action") == "Backup restored"
+                                                        and a.get("target") == os.path.basename(CONFIG_FILE)):
+            # the file's time and the logged save are the same moment (allow a few seconds)
+            if cfg_changed and a.get("when") and abs((a["when"] - cfg_changed).total_seconds()) <= 5:
+                cfg_by = a.get("admin") or "admin"
+            break
+
+    return render_template("dashboard.html", page="dashboard", users_info=users_info, sec=sec,
+                           backups_info=backups_info, cfg_changed=cfg_changed, cfg_by=cfg_by,
+                           actions=audit_recent[:5], known=set(all_users), authelia_url=bool(AUTHELIA_URL))
+
+
+_validation_cache = {}   # fingerprint of configuration.yml -> (ok, problems)
+_authelia_version = None
+
+
+def authelia_version():
+    global _authelia_version
+    if _authelia_version is None and AUTHELIA_BIN:
+        try:
+            out = subprocess.run([AUTHELIA_BIN, "--version"], capture_output=True, text=True, timeout=10,
+                                 env=CLI_ENV).stdout
+            m = re.search(r"v?(\d+\.\d+\.\d+)", out)
+            _authelia_version = "v" + m.group(1) if m else ""
+        except Exception:
+            _authelia_version = ""
+    return _authelia_version or ""
+
+
+@app.route("/dashboard/status")
+@login_required
+def dashboard_status():
+    """The two slower checks, loaded by the dashboard after it opens."""
+    text = read_text(CONFIG_FILE)
+    fp = fingerprint(text)
+    if fp not in _validation_cache:
+        ok, out = authelia_validate(text)
+        problems = 0
+        if ok is False:
+            errors = out.split("with warnings")[0]
+            problems = len(re.findall(r"^\s*-\s", errors, flags=re.M)) or 1
+        _validation_cache.clear()
+        _validation_cache[fp] = (ok, problems)
+    ok, problems = _validation_cache[fp]
+    resp = jsonify(authelia=authelia_health(), config_ok=ok, config_problems=problems,
+                   version=authelia_version(), checked=now().strftime("%H:%M"))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/users")
 @login_required
 def users():
     info = user_security_info()   # 2FA methods and last sign-in per user, from Authelia's database
@@ -703,6 +844,16 @@ def fmt_time(dt):
 app.jinja_env.filters["when"] = fmt_time
 
 
+def fmt_short(dt):
+    """14:44 for today, 18 Nov 14:44 otherwise."""
+    if not dt:
+        return ""
+    return dt.strftime("%H:%M") if dt.date() == now().date() else dt.strftime("%d %b %H:%M")
+
+
+app.jinja_env.filters["short"] = fmt_short
+
+
 def active_bans(con):
     """Bans that are in force now: not revoked, not expired, and either permanent or not yet past `expires`."""
     out = []
@@ -751,18 +902,28 @@ def user_security_info():
 @app.route("/activity")
 @login_required
 def activity():
+    audit = read_audit(ACTIVITY_MAX_ROWS + 1, days=ACTIVITY_DAYS)
+    common = {"page": "activity", "known": set(load_users()), "days": ACTIVITY_DAYS, "cap": ACTIVITY_MAX_ROWS,
+              "audit": audit[:ACTIVITY_MAX_ROWS], "audit_capped": len(audit) > ACTIVITY_MAX_ROWS}
     con = authelia_db()
     if not con:
-        return render_template("activity.html", page="activity", nodb=True, db=db_path(),
-                               audit=read_audit(), known=set(load_users()))
+        return render_template("activity.html", nodb=True, db=db_path(), **common)
     try:
         bans = active_bans(con)
-        rows = con.execute("SELECT time, successful, banned, username, auth_type, remote_ip FROM authentication_logs "
-                           "ORDER BY id DESC LIMIT 200").fetchall()
+        cutoff = now() - timedelta(days=ACTIVITY_DAYS)
         since = now() - timedelta(hours=24)
-        logs, ok24, fail24 = [], 0, 0
-        for r in rows:
+        logs, ok24, fail24, capped = [], 0, 0, False
+        # Newest first. Old entries are skipped rather than ending the scan, so the list doesn't rely on rows
+        # being stored in time order; the scan itself is bounded.
+        cur = con.execute("SELECT time, successful, banned, username, auth_type, remote_ip FROM authentication_logs "
+                          "ORDER BY id DESC LIMIT 50000")
+        for r in cur:
             t = db_time(r["time"])
+            if t and t < cutoff:
+                continue
+            if len(logs) >= ACTIVITY_MAX_ROWS:
+                capped = True
+                break
             logs.append({"time": t, "ok": bool(r["successful"]), "banned": bool(r["banned"]),
                          "user": r["username"], "method": r["auth_type"], "ip": r["remote_ip"] or ""})
             if t and t >= since:
@@ -772,8 +933,8 @@ def activity():
                     fail24 += 1
     finally:
         con.close()
-    return render_template("activity.html", page="activity", bans=bans, logs=logs, ok24=ok24, fail24=fail24,
-                           known=set(load_users()), audit=read_audit())
+    return render_template("activity.html", bans=bans, logs=logs, ok24=ok24, fail24=fail24, logs_capped=capped,
+                           **common)
 
 
 @app.route("/activity/unban", methods=["POST"])

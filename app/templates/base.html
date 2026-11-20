@@ -51,6 +51,7 @@
   .side { width:232px; flex:none; position:sticky; top:0; height:100vh; display:flex; flex-direction:column; gap:.25rem; padding:1rem .75rem; background:var(--side); color:var(--side-fg) }
   .brand { display:flex; align-items:center; gap:.6rem; padding:.25rem .6rem 1rem; color:#fff; font-weight:600; font-size:1.02rem }
   .brand .ic { width:24px; height:24px; color:#8b8cff }
+  a.brand { text-decoration:none } a.brand:hover { color:#fff; opacity:.85 }
   .side nav { display:flex; flex-direction:column; gap:.2rem }
   .side nav a, .side .sbtn { display:flex; align-items:center; gap:.65rem; padding:.55rem .7rem; border-radius:9px; color:var(--side-fg); text-decoration:none; white-space:nowrap; font:inherit; background:none; border:0; cursor:pointer; width:100%; text-align:left }
   .side nav a:hover, .side .sbtn:hover { background:var(--side-on); color:#fff }
@@ -123,6 +124,25 @@
   .tag.bad { background:color-mix(in srgb, var(--bad) 16%, var(--card)); color:var(--bad) }
   .tag.ok { background:color-mix(in srgb, var(--ok) 16%, var(--card)); color:var(--ok) }
   .tag.mut { background:var(--bg); color:var(--mut); border:1px solid var(--bd) }
+  .tag.warn { background:color-mix(in srgb, #f59e0b 18%, var(--card)); color:color-mix(in srgb, #b45309 70%, var(--fg)) }
+  /* dashboard */
+  .dash3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; margin-bottom:1rem }
+  .dash2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; margin-bottom:1rem }
+  .dash3 .card, .dash2 .card { margin:0 }
+  .dcard { display:flex; flex-direction:column; gap:.15rem }
+  .dlink { color:inherit; text-decoration:none } .dlink:hover { border-color:var(--pri) }
+  .dlabel { display:flex; align-items:center; gap:.45rem; margin:0 0 .4rem; color:var(--mut); font-size:.85rem; font-weight:500 }
+  .dlabel .ic { width:16px; height:16px }
+  .dbig { margin:0; font-size:1.05rem } .dbig .tag { font-size:.9rem; padding:.15rem .75rem }
+  .dsub { margin:.2rem 0 0; color:var(--mut); font-size:.85rem }
+  .drow { display:flex; justify-content:space-between; align-items:center; gap:.75rem; padding:.35rem 0; border-top:1px solid var(--bd); color:inherit; text-decoration:none; font-size:.92rem }
+  .dlabel + .drow { border-top:0 }
+  a.drow:hover { color:var(--pri) }
+  .dmut { color:var(--mut); font-size:.85rem; text-align:right; overflow-wrap:anywhere }
+  .dmore { margin-top:.5rem; font-size:.85rem; text-decoration:none }
+  .dbtn { align-self:flex-start; margin-top:.6rem; padding:.3rem .8rem; font-size:.85rem }
+  .dnums { display:flex; gap:2rem } .dnums b { display:block; font-size:1.6rem; line-height:1.2 } .dnums span { color:var(--mut); font-size:.85rem }
+  @media (max-width: 900px) { .dash3, .dash2 { grid-template-columns:minmax(0,1fr) } }
   .off { opacity:.55 }
   form.inline { display:inline }
   #theme-toggle.floating { position:fixed; right:14px; bottom:14px; width:42px; height:42px; border-radius:50%; border:1px solid var(--bd); background:var(--card); color:var(--fg); font-size:20px; line-height:1; cursor:pointer }
@@ -164,8 +184,9 @@
 {% if session.auth %}
 <div class="shell">
 <aside class="side">
-  <div class="brand"><img src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="28" height="28"><span>Authelia Admin</span></div>
+  <a class="brand" href="{{ url_for('dashboard') }}" title="Dashboard"><img src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="28" height="28"><span>Authelia Admin</span></a>
   <nav>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'on' if page=='dashboard' }}">{{ ic('home') }}<span>Dashboard</span></a>
     <a href="{{ url_for('users') }}" class="{{ 'on' if page=='users' }}">{{ ic('users') }}<span>Users</span></a>
     <a href="{{ url_for('config') }}" class="{{ 'on' if page=='config' }}">{{ ic('config') }}<span>Configuration</span></a>
     <a href="{{ url_for('activity') }}" class="{{ 'on' if page=='activity' }}">{{ ic('activity') }}<span>Activity</span></a>

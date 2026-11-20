@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ic %}
+{% block body %}
+<div class="pagehead"><h1>Dashboard</h1></div>
+{% include "_audit_problem.html" %}
+
+<div class="dash3" id="dash" data-status="{{ url_for('dashboard_status') }}">
+  <div class="card dcard">
+    <p class="dlabel">{{ ic('server') }}Authelia</p>
+    {% if authelia_url %}
+    <p class="dbig"><span class="tag mut" id="dash-authelia">checking…</span></p>
+    <p class="dsub" id="dash-authelia-sub">Health check of Authelia</p>
+    {% else %}
+    <p class="dbig"><span class="tag mut">not checked</span></p>
+    <p class="dsub">Set <code>AUTHELIA_URL</code> to see whether Authelia is up.</p>
+    {% endif %}
+    {% if can_restart %}
+    <form method="post" action="{{ url_for('restart') }}" data-confirm="Restart the Authelia container?">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="btn sec dbtn">{{ ic('refresh') }}Restart</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card dcard">
+    <p class="dlabel">{{ ic('config') }}Configuration</p>
+    <p class="dbig"><span class="tag mut" id="dash-config">checking…</span></p>
+    <p class="dsub">{% if cfg_changed %}Changed {{ cfg_changed|when|lower }}{% if cfg_by %} by {{ cfg_by }}{% else %} outside this app{% endif %}{% else %}configuration.yml not found{% endif %}</p>
+    <a class="btn sec dbtn" href="{{ url_for('config') }}">Edit</a>
+  </div>
+
+  <div class="card dcard">
+    <p class="dlabel">{{ ic('lock') }}Security</p>
+    {% if sec %}
+    <a class="drow" href="{{ url_for('activity') }}"><span>Locked out now</span><span class="tag {{ 'bad' if sec.bans else 'ok' }}">{{ sec.bans }}</span></a>
+    <a class="drow" href="{{ url_for('activity') }}"><span>Failed sign-ins, 24 h</span><span class="tag {{ 'warn' if sec.fail24 else 'ok' }}">{{ sec.fail24 }}</span></a>
+    <a class="drow" href="{{ url_for('users') }}"><span>Users without 2FA</span><span class="tag {{ 'warn' if sec.no2fa else 'ok' }}">{{ sec.no2fa }} of {{ sec.active }}</span></a>
+    {% else %}
+    <p class="dsub">Authelia's database isn't available yet, so sign-ins and lockouts can't be shown.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="dash2">
+  <a class="card dcard dlink" href="{{ url_for('users') }}">
+    <p class="dlabel">{{ ic('users') }}Users</p>
+    <div class="dnums">
+      <div><b>{{ users_info.total }}</b><span>users</span></div>
+      <div><b>{{ users_info.admins }}</b><span>admins</span></div>
+      <div><b>{{ users_info.disabled }}</b><span>disabled</span></div>
+    </div>
+  </a>
+  <div class="card dcard">
+    <p class="dlabel">{{ ic('archive') }}<a href="{{ url_for('backups') }}">Backups</a> · {{ backups_info.count }}</p>
+    {% for base, t in backups_info.latest %}
+    <div class="drow"><span>{{ base }}</span><span class="dmut">{{ t|when|lower }}</span></div>
+    {% else %}
+    <p class="dsub">No backups yet. They are made automatically before every change.</p>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="dash2">
+  <div class="card dcard">
+    <p class="dlabel">{{ ic('activity') }}Recent sign-ins</p>
+    {% if sec %}
+    {% for l in sec.recent %}
+    <div class="drow"><span>{{ l.time|short }} {{ l.user }}</span>{% if l.ok %}<span class="tag ok">success</span>{% elif l.banned %}<span class="tag bad">locked out</span>{% else %}<span class="tag bad">failed</span>{% endif %}</div>
+    {% else %}
+    <p class="dsub">No sign-ins recorded yet.</p>
+    {% endfor %}
+    {% else %}
+    <p class="dsub">Authelia's database isn't available yet.</p>
+    {% endif %}
+    <a class="dmore" href="{{ url_for('activity') }}">All activity →</a>
+  </div>
+  <div class="card dcard">
+    <p class="dlabel">{{ ic('key') }}Admin actions</p>
+    {% for a in actions %}
+    <div class="drow"><span>{{ a.when|short }} {{ a.action }}</span><span class="dmut">{{ a.target }}</span></div>
+    {% else %}
+    <p class="dsub">Nothing recorded yet.</p>
+    {% endfor %}
+    <a class="dmore" href="{{ url_for('activity') }}#audit-table">All admin actions →</a>
+  </div>
+</div>
+{% endblock %}

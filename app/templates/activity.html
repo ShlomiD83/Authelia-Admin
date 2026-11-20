@@ -2,6 +2,7 @@
 {% from "_icons.html" import ic %}
 {% block body %}
 <div class="pagehead"><h1>Activity</h1></div>
+{% include "_audit_problem.html" %}
 {% if nodb %}
 <div class="card">
   <p style="margin:0">Authelia's database isn't available at <code>{{ db }}</code>, or it has no tables yet (Authelia creates them the first time it starts). Sign-ins and lockouts are read from there.</p>
@@ -55,10 +56,10 @@
       <td data-label="Step">{{ {'1FA': 'password', 'TOTP': 'TOTP code', 'WebAuthn': 'passkey / security key', 'Duo': 'Duo'}.get(l.method, l.method) }}</td>
       <td data-label="IP">{{ l.ip }}</td>
     </tr>
-    {% else %}<tr><td colspan="5">No sign-ins recorded yet.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="5">No sign-ins in the last {{ days }} days.</td></tr>{% endfor %}
     </tbody>
   </table>
-  <p style="color:var(--mut);margin:.75rem 0 0;font-size:.85rem">The latest 200 entries from Authelia's database, times in {{ tzname }}.</p>
+  <p style="color:var(--mut);margin:.75rem 0 0;font-size:.85rem">{{ logs|length }} sign-ins from the last {{ days }} days{% if logs_capped %} (only the newest {{ cap }} are shown){% endif %}, from Authelia's database. Times in {{ tzname }}.</p>
 </div>
 {% endif %}
 
@@ -76,9 +77,9 @@
       <td data-label="Details" style="overflow-wrap:anywhere">{{ a.detail }}</td>
       <td data-label="By">{{ a.admin or 'not signed in' }}{% if a.via %} <span style="color:var(--mut)">({{ a.via }})</span>{% endif %}<br><span style="color:var(--mut);font-size:.82rem">{{ a.ip }}</span></td>
     </tr>
-    {% else %}<tr><td colspan="5">Nothing recorded yet. Changes made through this app (users, passwords, configuration, backups, restarts, unbans) and admin sign-ins appear here.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="5">Nothing in the last {{ days }} days. Changes made through this app (users, passwords, configuration, backups, restarts, unbans) and admin sign-ins appear here.</td></tr>{% endfor %}
     </tbody>
   </table>
-  <p style="color:var(--mut);margin:.75rem 0 0;font-size:.85rem">The latest 200 entries from <code>{{ audit_file }}</code>.</p>
+  <p style="color:var(--mut);margin:.75rem 0 0;font-size:.85rem">{{ audit|length }} actions from the last {{ days }} days{% if audit_capped %} (only the newest {{ cap }} are shown){% endif %}, from <code>{{ audit_file }}</code>.</p>
 </div>
 {% endblock %}

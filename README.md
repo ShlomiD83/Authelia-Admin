@@ -12,6 +12,9 @@ Runs as a single container with a distroless runtime image and no pinned Autheli
 
 ## Features
 
+**Dashboard**
+- Home page with the state of everything at a glance: Authelia up or down, configuration valid or not and when it last changed, lockouts, failed sign-ins, users without 2FA, user counts, latest backups, and the most recent sign-ins and admin actions
+
 **Users**
 - Create, edit (display name, email, groups, disabled) and delete users in `users_database.yml`
 - Set or generate passwords, hashed with argon2id in Authelia's own format (t=3, m=64 MiB, p=4); plain passwords are never stored
@@ -121,6 +124,7 @@ One of `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` or `ADMIN_PASSWORD_HASH_FILE` is 
 | `AUTHELIA_USERS_FILE` | `users_database.yml` | Users file name, relative to the config dir. |
 | `AUTHELIA_DB_FILE` | `<config dir>/db.sqlite3` | SQLite file, used only if `storage.local.path` is not set in the configuration. |
 | `MAX_BACKUPS` | `30` | Backups kept per file; older ones are deleted. |
+| `ACTIVITY_DAYS` | `30` | How many days back the Activity page shows sign-ins and admin actions. |
 | `AUDIT_LOG_FILE` | `/config/admin_audit.log` | Where the admin action log is written (JSON lines, about 1 MB plus one older `.1` file). |
 
 Backups are stored in `<config dir>/backups`.

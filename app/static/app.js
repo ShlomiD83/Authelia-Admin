@@ -229,3 +229,30 @@ document.addEventListener("click", function (e) {
     poll();
   });
 })();
+
+// ---- dashboard: the two slower checks (Authelia health, configuration validation) ----
+document.addEventListener("DOMContentLoaded", function () {
+  var dash = document.getElementById("dash");
+  if (!dash) return;
+  function set(id, cls, text) {
+    var el = document.getElementById(id);
+    if (el) { el.className = "tag " + cls; el.textContent = text; }
+  }
+  fetch(dash.getAttribute("data-status"), { credentials: "same-origin", cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (s) {
+      if (s.authelia === "up") set("dash-authelia", "ok", "up");
+      else if (s.authelia === "down") set("dash-authelia", "bad", "down");
+      var sub = document.getElementById("dash-authelia-sub");
+      if (sub && s.authelia) sub.textContent = (s.authelia === "up" ? "Responding" : "Not responding") + " · checked " + s.checked;
+      if (s.config_ok === true) set("dash-config", "ok", "valid");
+      else if (s.config_ok === false) set("dash-config", "bad", s.config_problems + (s.config_problems === 1 ? " problem" : " problems"));
+      else set("dash-config", "mut", "not checked");
+      var cfg = document.getElementById("dash-config");
+      if (cfg && s.version) cfg.title = "Checked with Authelia " + s.version;
+    })
+    .catch(function () {
+      set("dash-authelia", "mut", "unknown");
+      set("dash-config", "mut", "unknown");
+    });
+});

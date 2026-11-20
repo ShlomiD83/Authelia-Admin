@@ -6,7 +6,17 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **Dashboard** as the home page (the logo and the new first sidebar item lead there): whether Authelia
+  is up and the configuration passes validation, when the configuration last changed and whether that was
+  through this app, lockouts, failed sign-ins and users without 2FA, user counts, the latest backups, and
+  the most recent sign-ins and admin actions. The Users list moved to `/users`.
+- A warning on the dashboard and the Activity page when the admin action log can't be written, instead of
+  failing silently.
+
+### Changed
+- The Activity page shows sign-ins and admin actions from the last 30 days (set `ACTIVITY_DAYS` to change
+  it) instead of the latest 200 entries; at most 2,000 rows per list.
 
 ## 2026-11-20 (image `2026.11.20-1247`)
 
