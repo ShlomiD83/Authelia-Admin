@@ -416,13 +416,47 @@ def save_passkeys(items):
         raise
 
 
+# ---- passkey signing ----
+# Each entry carries an HMAC made with a key derived from SECRET_KEY, which lives in the compose file, not
+# in the Authelia folder. Someone who can only write to that folder can't add or alter a passkey: entries
+# without a valid signature are ignored for sign-in and shown as "not trusted" on the Security page, where
+# a signed-in admin can trust them. Needs a fixed SECRET_KEY; without one (random per start) signing is off.
+PASSKEY_SIGNING = bool(os.environ.get("SECRET_KEY"))
+_PK_KEY = hmac.new(app.config["SECRET_KEY"].encode(), b"authelia-admin passkey signing v1",
+                   hashlib.sha256).digest()
+_PK_SIGNED_FIELDS = ("id", "public_key", "name", "created")
+
+
+def pk_signature(p):
+    msg = json.dumps({k: p.get(k) for k in _PK_SIGNED_FIELDS}, sort_keys=True, separators=(",", ":"))
+    return hmac.new(_PK_KEY, msg.encode(), hashlib.sha256).hexdigest()
+
+
+def pk_sign(p):
+    if PASSKEY_SIGNING:
+        p["sig"] = pk_signature(p)
+    return p
+
+
+def pk_trusted(p):
+    if not PASSKEY_SIGNING:
+        return True
+    return isinstance(p.get("sig"), str) and hmac.compare_digest(p["sig"], pk_signature(p))
+
+
+def trusted_passkeys():
+    """The passkeys that may be used to sign in."""
+    return [p for p in load_passkeys() if pk_trusted(p)]
+
+
 def password_login_allowed():
-    """Password sign-in is only switched off when passkey-only mode is on AND a passkey exists (no lock-out)."""
-    return not (PASSKEY_ONLY and PASSKEYS_ENABLED and load_passkeys())
+    """Password sign-in is only switched off when passkey-only mode is on AND a trusted passkey exists, so
+    untrusted or deleted passkeys never lock you out."""
+    return not (PASSKEY_ONLY and PASSKEYS_ENABLED and trusted_passkeys())
 
 
 def login_ctx():
-    return dict(show_passkey=PASSKEYS_ENABLED and bool(load_passkeys()), password_ok=password_login_allowed())
+    return dict(show_passkey=PASSKEYS_ENABLED and bool(trusted_passkeys()), password_ok=password_login_allowed())
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -518,7 +552,8 @@ def security_page(new_secret=None, verified=None):
             scale=5, border=3, dark="#000000", light="#ffffff", omitsize=True,  # viewBox only, so CSS can scale it
             title="Authenticator setup QR code")
     resp = make_response(render_template(
-        "security.html", page="security", passkeys=load_passkeys(),
+        "security.html", page="security",
+        passkeys=[dict(p, trusted=pk_trusted(p)) for p in load_passkeys()], signing=PASSKEY_SIGNING,
         enabled=PASSKEYS_ENABLED, lib_ok=WEBAUTHN_OK, rp_id=RP_ID, origin=RP_ORIGIN,
         passkey_only=PASSKEY_ONLY, totp_enabled=bool(TOTP_SECRET),
         new_secret=new_secret, verified=verified, qr=qr))
@@ -598,6 +633,7 @@ def pk_register_verify():
         "synced": bool(v.credential_backed_up),
         "transports": [t for t in transports if isinstance(t, str)] if isinstance(transports, list) else [],
     })
+    pk_sign(items[-1])
     save_passkeys(items)
     audit("Passkey added", items[-1]["name"])
     flash("Passkey added.", "ok")
@@ -617,9 +653,26 @@ def pk_delete(pid):
     return redirect(url_for("security"))
 
 
+@app.route("/passkeys/<pid>/trust", methods=["POST"])
+@login_required
+def pk_trust(pid):
+    """Sign a passkey that has no valid signature (added before signing existed, or outside this app)."""
+    if not PASSKEY_SIGNING:
+        abort(404)
+    items = load_passkeys()
+    p = next((x for x in items if x.get("id") == pid), None)
+    if not p:
+        abort(404)
+    pk_sign(p)
+    save_passkeys(items)
+    audit("Passkey trusted", p.get("name", ""), "created " + str(p.get("created") or "unknown"))
+    flash(f"Passkey '{p.get('name', 'Passkey')}' is trusted and can be used to sign in.", "ok")
+    return redirect(url_for("security"))
+
+
 @app.route("/passkeys/login/options", methods=["POST"])
 def pk_login_options():
-    if not (PASSKEYS_ENABLED and load_passkeys()):
+    if not (PASSKEYS_ENABLED and trusted_passkeys()):
         return _pk_error("Passkey sign-in is not available.", 404)
     opts = generate_authentication_options(rp_id=RP_ID,
                                            user_verification=UserVerificationRequirement.REQUIRED)
@@ -629,7 +682,7 @@ def pk_login_options():
 
 @app.route("/passkeys/login/verify", methods=["POST"])
 def pk_login_verify():
-    if not (PASSKEYS_ENABLED and load_passkeys()):
+    if not (PASSKEYS_ENABLED and trusted_passkeys()):
         return _pk_error("Passkey sign-in is not available.", 404)
     ip = request.remote_addr
     count, first = _failed.get(ip, (0, time.time()))
@@ -640,7 +693,8 @@ def pk_login_verify():
     chal = session.pop("pk_auth", None)
     cred = (request.get_json(silent=True) or {}).get("credential")
     items = load_passkeys()
-    pk = next((p for p in items if isinstance(cred, dict) and p.get("id") == cred.get("id")), None)
+    # only a trusted (correctly signed) passkey can sign in
+    pk = next((p for p in items if isinstance(cred, dict) and p.get("id") == cred.get("id") and pk_trusted(p)), None)
     verified = None
     if chal and pk:
         try:

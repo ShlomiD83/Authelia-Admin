@@ -109,7 +109,7 @@ The container user must be able to **write** the config folder. Check the owner 
 | `ADMIN_PASSWORD` | – | Admin password in plain text. Simple, but the password sits in your compose file. |
 | `ADMIN_PASSWORD_HASH` | – | Admin password as an argon2id hash. Takes precedence over `ADMIN_PASSWORD`. In compose YAML every `$` must be written as `$$`. |
 | `ADMIN_PASSWORD_HASH_FILE` | – | Path to a file containing the hash (no `$` escaping needed). Overrides `ADMIN_PASSWORD_HASH`. |
-| `SECRET_KEY` | random per start | Signs the session cookie. **Set it**, otherwise every restart logs you out. Use a long random value. |
+| `SECRET_KEY` | random per start | Signs the session cookie and each stored passkey. **Set it**, otherwise every restart logs you out and passkeys aren't protected against changes made outside the app. Use a long random value. Changing it later makes existing passkeys "not trusted" until you trust them again on the Security page. |
 | `COOKIE_SECURE` | `false` | Set to `true` when served over HTTPS. With `true` over plain HTTP, login fails with "Bad CSRF token". |
 | `TZ` | `UTC` | Time zone (IANA name) for backup file names and timestamps. |
 
@@ -140,7 +140,7 @@ Any other `AUTHELIA_*` variable you set on this container (for example `AUTHELIA
 | `ADMIN_RP_ID` | – | Your site's domain, for example `admin.example.com`. Passkeys are bound to it. |
 | `ADMIN_ORIGIN` | – | Full origin, for example `https://admin.example.com`. |
 | `ADMIN_RP_NAME` | `Authelia Admin` | Name shown in the passkey prompt and authenticator apps. |
-| `PASSKEY_FILE` | `<config dir>/admin_passkeys.json` | Where public keys and counters are stored (private keys never leave your device). |
+| `PASSKEY_FILE` | `<config dir>/admin_passkeys.json` | Where public keys and counters are stored (private keys never leave your device). Each entry is signed with a key derived from `SECRET_KEY`; an entry added or changed outside the app is ignored for sign-in until a signed-in admin trusts it. |
 | `ADMIN_PASSKEY_ONLY` | `false` | `true` turns password login off while at least one passkey is registered. |
 
 Passkeys are enabled when both `ADMIN_RP_ID` and `ADMIN_ORIGIN` are set.

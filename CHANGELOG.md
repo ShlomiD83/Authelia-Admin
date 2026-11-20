@@ -6,7 +6,17 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Security
+- **Signed passkeys**: each entry in `admin_passkeys.json` is signed with a key derived from `SECRET_KEY`.
+  A passkey added or changed directly in the file (for example by someone with write access to the
+  Authelia folder) can't be used to sign in; it shows as "not trusted" on the Security page, where a
+  signed-in admin can trust or remove it. Requires a fixed `SECRET_KEY`; the Security page warns when it
+  isn't set. Password sign-in stays available while no trusted passkey exists, even in passkey-only mode.
+
+### Upgrade note
+- Passkeys registered before this version are unsigned, so they show as "not trusted" after updating.
+  Sign in with your password (and TOTP), check each passkey's name and date on the Security page, and
+  click **Trust**.
 
 ## 2026-11-20 (image `2026.11.20-1307`)
 

@@ -13,13 +13,25 @@ ADMIN_ORIGIN: https://admin.example.com</pre>
   <p style="color:var(--mut);margin:.5rem 0 0">Use your real domain. The site has to be opened over HTTPS on exactly that domain, and passkeys are tied to it.</p>
   {% else %}
   <p style="color:var(--mut);margin:0 0 .75rem">Sign in with Face ID, a fingerprint, a PIN, or a security key instead of a password. Domain: <code>{{ rp_id }}</code></p>
+  {% if not signing %}
+  <div class="flash error">Passkeys aren't protected against changes made outside this app, because <code>SECRET_KEY</code> isn't set. Set a fixed <code>SECRET_KEY</code> in the compose file: then each passkey is signed, and one added directly to <code>admin_passkeys.json</code> can't be used to sign in.</div>
+  {% endif %}
+  {% set untrusted = passkeys|rejectattr('trusted')|list %}
+  {% if untrusted %}
+  <div class="flash error">{{ untrusted|length }} passkey{{ 's are' if untrusted|length != 1 else ' is' }} not trusted and can't be used to sign in: added before passkey signing existed, added or changed outside this app, or <code>SECRET_KEY</code> changed. Trust only a passkey you recognise by its name and date; otherwise remove it.</div>
+  {% endif %}
   {% if passkeys %}
   <ul class="pklist">
     {% for p in passkeys %}
     <li>
       <span class="av">{{ ic('key') }}</span>
-      <div class="grow"><strong>{{ p.name }}</strong>
-        <div class="meta">Added {{ p.created[:10] }} · Last used {{ p.last_used[:16]|replace('T', ' ') if p.last_used else 'never' }}{% if p.synced %} · synced{% endif %}</div></div>
+      <div class="grow"><strong>{{ p.name }}</strong>{% if not p.trusted %} <span class="tag bad">not trusted</span>{% endif %}
+        <div class="meta">Added {{ (p.created or '')[:16]|replace('T', ' ') }} · Last used {{ p.last_used[:16]|replace('T', ' ') if p.last_used else 'never' }}{% if p.synced %} · synced{% endif %}</div></div>
+      {% if not p.trusted %}
+      <form method="post" action="{{ url_for('pk_trust', pid=p.id) }}" data-confirm="Trust the passkey '{{ p.name }}' (added {{ (p.created or 'unknown')[:16]|replace('T', ' ') }})? Only do this if you added it yourself.">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="btn">Trust</button>
+      </form>
+      {% endif %}
       <form method="post" action="{{ url_for('pk_delete', pid=p.id) }}" data-confirm="Remove the passkey '{{ p.name }}'?">
         <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="btn sec">Remove</button>
       </form>
