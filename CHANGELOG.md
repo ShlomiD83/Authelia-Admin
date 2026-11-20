@@ -6,7 +6,9 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+- Messages containing code labels (such as `SECRET_KEY` on the Security page) were broken into columns;
+  they now read as one paragraph.
 
 ## 2026-11-20 (image `2026.11.20-1319`)
 

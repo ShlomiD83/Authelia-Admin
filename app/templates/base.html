@@ -113,10 +113,11 @@
   .search { position:relative; margin-bottom:.75rem }
   .search .ic { position:absolute; left:.7rem; top:50%; transform:translateY(-50%); color:var(--mut) }
   .search input { padding-left:2.2rem }
-  .flash { display:flex; gap:.6rem; align-items:center; padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; border:1px solid; font-weight:500 }
+  .flash { display:block; padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; border:1px solid; font-weight:500; line-height:1.55 }
+  .flash code { font-weight:400; padding:.05rem .35rem; border-radius:5px; background:color-mix(in srgb, var(--fg) 8%, transparent) }
   .flash.ok { background:color-mix(in srgb, var(--ok) 14%, var(--card)); border-color:color-mix(in srgb, var(--ok) 45%, transparent); color:var(--fg) }
   .flash.error { background:color-mix(in srgb, var(--bad) 14%, var(--card)); border-color:color-mix(in srgb, var(--bad) 45%, transparent); color:var(--fg) }
-  .flash.wait { background:color-mix(in srgb, var(--pri) 10%, var(--card)); border-color:color-mix(in srgb, var(--pri) 40%, transparent); color:var(--fg) }
+  .flash.wait { display:flex; gap:.6rem; align-items:center; background:color-mix(in srgb, var(--pri) 10%, var(--card)); border-color:color-mix(in srgb, var(--pri) 40%, transparent); color:var(--fg) }
   .flash.wait::before { content:""; width:14px; height:14px; flex:none; border-radius:50%; border:2px solid var(--pri); border-right-color:transparent; animation:spin .8s linear infinite }
   @keyframes spin { to { transform:rotate(360deg) } }
   .tag { display:inline-block; padding:.05rem .6rem; border-radius:99px; background:var(--pri-soft); color:var(--pri-fg); font-size:.78rem; font-weight:500; margin-right:.25rem }

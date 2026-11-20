@@ -18,7 +18,7 @@ ADMIN_ORIGIN: https://admin.example.com</pre>
   {% endif %}
   {% set untrusted = passkeys|rejectattr('trusted')|list %}
   {% if untrusted %}
-  <div class="flash error">{{ untrusted|length }} passkey{{ 's are' if untrusted|length != 1 else ' is' }} not trusted and can't be used to sign in: added before passkey signing existed, added or changed outside this app, or <code>SECRET_KEY</code> changed. Trust only a passkey you recognise by its name and date; otherwise remove it.</div>
+  <div class="flash error">{{ untrusted|length }} passkey{{ 's aren\'t' if untrusted|length != 1 else ' isn\'t' }} trusted, so {{ 'they' if untrusted|length != 1 else 'it' }} can't be used to sign in. This happens to passkeys added before signing existed, added or changed outside this app, or after <code>SECRET_KEY</code> changed. Click <b>Trust</b> only if you recognise the name and date; otherwise remove it.</div>
   {% endif %}
   {% if passkeys %}
   <ul class="pklist">
