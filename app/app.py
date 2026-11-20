@@ -668,18 +668,27 @@ def authelia_db():
         return None
 
 
-_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
+# e.g. "2026-11-20 14:34:00.123456789+02:00", "2026-11-20T12:34:00Z", "2026-11-20 12:34:00"
+_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?")
 
 
 def db_time(value):
-    """Authelia stores UTC timestamps in a few text formats; return an aware datetime in TZ, or None."""
+    """Authelia's timestamps as an aware datetime in TZ, or None. Authelia writes them with the offset of
+    its own time zone (its container's TZ); a value without an offset (SQLite's CURRENT_TIMESTAMP) is UTC."""
     if not value:
         return None
     m = _TS_RE.match(str(value))
     if not m:
         return None
-    dt = datetime.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    return dt.astimezone(TZINFO)
+    dt = datetime.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S")
+    off = m.group(3)
+    if off and off != "Z":
+        sign = 1 if off[0] == "+" else -1
+        digits = off[1:].replace(":", "")
+        tz = timezone(sign * timedelta(hours=int(digits[:2]), minutes=int(digits[2:4])))
+    else:
+        tz = timezone.utc
+    return dt.replace(tzinfo=tz).astimezone(TZINFO)
 
 
 def fmt_time(dt):
