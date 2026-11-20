@@ -10,3 +10,5 @@ backups
 .env
 **/__pycache__
 **/*.pyc
+editor/node_modules
+editor/dist

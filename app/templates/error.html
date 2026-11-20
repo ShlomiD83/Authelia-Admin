@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="flash error">{{ message }}</div>
+<p><a href="{{ request.path }}">Try again</a></p>
+{% endblock %}

@@ -22,6 +22,7 @@ services:
 
       # --- optional: restart button (flag file + host systemd path unit, see README) ---
       # RESTART_FLAG_FILE: /config/.restart-request
+      # AUTHELIA_URL: http://authelia:9091         # lets the page confirm Authelia is back up after a restart
 
       # --- optional: Reset 2FA, if the storage key is not written in configuration.yml ---
       # AUTHELIA_STORAGE_ENCRYPTION_KEY: "..."

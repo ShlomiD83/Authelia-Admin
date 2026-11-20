@@ -13,15 +13,16 @@ import re
 import secrets
 import shutil
 import tempfile
+import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo
 
 import yaml
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from flask import (Flask, abort, flash, jsonify, make_response, redirect, render_template,
+from flask import (Flask, abort, flash, g, jsonify, make_response, redirect, render_template,
                    request, send_from_directory, session, url_for)
 
 try:  # QR codes for TOTP setup; optional (the secret can always be typed in by hand)
@@ -50,6 +51,12 @@ MAX_BACKUPS = int(os.environ.get("MAX_BACKUPS", "30"))
 AUTHELIA_CONTAINER = os.environ.get("AUTHELIA_CONTAINER", "")  # enables restart button (Docker socket mode)
 # Socket-free restart: the button creates this file and a host-side systemd path unit restarts Authelia.
 RESTART_FLAG_FILE = os.environ.get("RESTART_FLAG_FILE", "")
+# Optional: Authelia's address as seen from this container (e.g. http://authelia:9091). After a restart the
+# page polls Authelia's /api/health through this app and reports when Authelia is back up.
+AUTHELIA_URL = os.environ.get("AUTHELIA_URL", "").strip().rstrip("/")
+if AUTHELIA_URL and not re.match(r"^https?://", AUTHELIA_URL):
+    print("WARNING: AUTHELIA_URL must start with http:// or https://, ignoring it", flush=True)
+    AUTHELIA_URL = ""
 
 # Time zone for backup timestamps, e.g. TZ=Asia/Jerusalem (uses the tzdata pip package, so it
 # works even though the runtime image has no system zoneinfo). Falls back to UTC if invalid.
@@ -192,6 +199,27 @@ def csrf_token():
 
 app.jinja_env.globals["csrf_token"] = csrf_token
 app.jinja_env.globals["can_restart"] = bool(AUTHELIA_CONTAINER or RESTART_FLAG_FILE)
+app.jinja_env.globals["tzname"] = str(TZINFO)
+app.jinja_env.globals["audit_file"] = os.environ.get("AUDIT_LOG_FILE") or os.path.join(CONFIG_DIR, "admin_audit.log")
+
+
+# Changes are made one at a time: two saves arriving together (e.g. from two tabs) would otherwise both read
+# users_database.yml before either writes it, and the second would silently undo the first. The app runs
+# a single gunicorn worker process, so a thread lock is enough.
+_change_lock = threading.Lock()
+
+
+@app.before_request
+def one_change_at_a_time():
+    if request.method == "POST" and not request.path.startswith(("/restart/status", "/passkeys/login")):
+        _change_lock.acquire()
+        g.holds_change_lock = True
+
+
+@app.teardown_request
+def release_change_lock(exc):
+    if g.pop("holds_change_lock", False):
+        _change_lock.release()
 
 
 @app.before_request
@@ -199,7 +227,16 @@ def protect():
     if request.method == "POST":
         sent = request.form.get("csrf", "") or request.headers.get("X-CSRF-Token", "")
         if not hmac.compare_digest(sent, session.get("csrf", "x")):
-            abort(400, "Bad CSRF token")
+            # Usually the session ended (logout, timeout, or the container restarted without SECRET_KEY),
+            # not an attack. Explain it instead of showing a bare "Bad Request".
+            if request.is_json or request.headers.get("X-CSRF-Token"):
+                return jsonify(ok=False, error="Your session expired. Reload the page and log in again."), 400
+            if not session.get("auth"):
+                flash("Your session expired, so that action was not carried out. Log in and try again "
+                      "(configuration edits are kept in this browser and can be restored).", "error")
+                return redirect(url_for("login"))
+            flash("The page was out of date, so that action was not carried out. Please try again.", "error")
+            return redirect(request.path)
 
 
 def login_required(f):
@@ -211,19 +248,79 @@ def login_required(f):
     return wrapper
 
 
-def backup(path):
-    if not os.path.exists(path):
-        return
-    os.makedirs(BACKUP_DIR, exist_ok=True)
+# ---------- admin action log ----------
+# One JSON object per line. Capped at about 1 MB: the previous file is kept as <name>.1, so roughly the
+# last 2 MB of history (thousands of entries) is available.
+AUDIT_FILE = os.environ.get("AUDIT_LOG_FILE") or os.path.join(CONFIG_DIR, "admin_audit.log")
+AUDIT_MAX_BYTES = 1_000_000
+
+
+def audit(action, target="", detail=""):
+    """Record an admin action. Never lets a logging problem break the action itself."""
+    # "admin" only when signed in: a failed sign-in can come from anyone
+    entry = {"time": now().isoformat(timespec="seconds"), "admin": ADMIN_USER if session.get("auth") else "",
+             "via": session.get("via", "") if session else "",
+             "ip": request.remote_addr if request else "", "action": action,
+             "target": str(target)[:200], "detail": str(detail)[:500]}
+    try:
+        if os.path.exists(AUDIT_FILE) and os.path.getsize(AUDIT_FILE) > AUDIT_MAX_BYTES:
+            os.replace(AUDIT_FILE, AUDIT_FILE + ".1")
+        with open(AUDIT_FILE, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        app.logger.exception("Couldn't write the admin action log %s", AUDIT_FILE)
+
+
+def read_audit(limit=200):
+    """Newest first."""
+    lines = []
+    for path in (AUDIT_FILE, AUDIT_FILE + ".1"):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                lines += fh.readlines()[::-1]   # current file first, then the older .1 file
+        except OSError:
+            continue
+        if len(lines) >= limit:
+            break
+    out = []
+    for ln in lines[:limit]:
+        try:
+            e = json.loads(ln)
+            e["when"] = datetime.fromisoformat(e["time"]) if e.get("time") else None
+            out.append(e)
+        except (ValueError, KeyError, TypeError):
+            continue
+    return out
+
+
+def backup_name(base):
+    """Path for a new backup of `base` named by the current time; a second backup within the same second
+    gets -2, -3, ... instead of overwriting the first (these names still sort in time order)."""
     stamp = now().strftime("%Y%m%d-%H%M%S")
-    shutil.copy2(path, os.path.join(BACKUP_DIR, f"{os.path.basename(path)}.{stamp}"))
+    dest = os.path.join(BACKUP_DIR, f"{base}.{stamp}")
+    n = 2
+    while os.path.exists(dest):
+        dest = os.path.join(BACKUP_DIR, f"{base}.{stamp}-{n}")
+        n += 1
+    return dest
+
+
+def backup(path):
+    """Copy path into the backups folder; returns the backup's path (None if there was nothing to back up)."""
+    if not os.path.exists(path):
+        return None
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    dest = backup_name(os.path.basename(path))
+    shutil.copy2(path, dest)
     olds = sorted(glob.glob(os.path.join(BACKUP_DIR, os.path.basename(path) + ".*")))
     for old in olds[:-MAX_BACKUPS]:
         os.remove(old)
+    return dest
 
 
 def atomic_write(path, text):
-    backup(path)
+    """Back up, then replace path with text. Returns the backup's path."""
+    bk = backup(path)
     # Write in place of a temp file in the same dir, then replace (Authelia's watcher sees one event).
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
     try:
@@ -244,6 +341,7 @@ def atomic_write(path, text):
         if os.path.exists(tmp):
             os.remove(tmp)
         raise
+    return bk
 
 
 def load_users():
@@ -314,6 +412,9 @@ def login():
         if time.time() - first > 900:
             count, first = 0, time.time()
         if count >= 5:
+            if count == 5:
+                audit("Sign-in blocked", "", "too many failed attempts from this IP")
+                _failed[ip] = (count + 1, first)
             flash("Too many failed attempts. Try again in 15 minutes.", "error")
             return render_template("login.html", **login_ctx()), 429
         u, p = request.form.get("username", ""), request.form.get("password", "")
@@ -324,9 +425,12 @@ def login():
                 return redirect(url_for("login_totp"))
             _failed.pop(ip, None)
             session["auth"] = True
+            session["via"] = "password"
             session.permanent = True
+            audit("Signed in")
             return redirect(url_for("users"))
         _failed[ip] = (count + 1, first)
+        audit("Sign-in failed", u[:64], "wrong user name or password")
         flash("Invalid credentials.", "error")
     return render_template("login.html", **login_ctx())
 
@@ -352,15 +456,20 @@ def login_totp():
             _failed.pop(ip, None)
             session.clear()
             session["auth"] = True
+            session["via"] = "password + TOTP"
             session.permanent = True
+            audit("Signed in")
             return redirect(url_for("users"))
         _failed[ip] = (count + 1, first)
+        audit("Sign-in failed", ADMIN_USER, "wrong TOTP code")
         flash("That code didn't work. Check the code and your phone's clock.", "error")
     return render_template("login_totp.html")
 
 
 @app.route("/logout", methods=["POST"])
 def logout():
+    if session.get("auth"):
+        audit("Signed out")
     session.clear()
     return redirect(url_for("login"))
 
@@ -466,6 +575,7 @@ def pk_register_verify():
         "transports": [t for t in transports if isinstance(t, str)] if isinstance(transports, list) else [],
     })
     save_passkeys(items)
+    audit("Passkey added", items[-1]["name"])
     flash("Passkey added.", "ok")
     return jsonify(ok=True)
 
@@ -478,6 +588,7 @@ def pk_delete(pid):
     if len(left) == len(items):
         abort(404)
     save_passkeys(left)
+    audit("Passkey removed", next((p.get("name", "") for p in items if p.get("id") == pid), ""))
     flash("Passkey removed.", "ok")
     return redirect(url_for("security"))
 
@@ -519,6 +630,7 @@ def pk_login_verify():
             verified = None
     if not verified:
         _failed[ip] = (count + 1, first)
+        audit("Sign-in failed", ADMIN_USER, "passkey not accepted")
         return _pk_error("Passkey sign-in failed.", 401)
     pk["sign_count"] = verified.new_sign_count
     pk["last_used"] = now().isoformat(timespec="seconds")
@@ -526,7 +638,9 @@ def pk_login_verify():
     _failed.pop(ip, None)
     session.clear()
     session["auth"] = True
+    session["via"] = "passkey: " + pk.get("name", "Passkey")
     session.permanent = True
+    audit("Signed in")
     return jsonify(ok=True, next=url_for("users"))
 
 
@@ -534,7 +648,147 @@ def pk_login_verify():
 @app.route("/")
 @login_required
 def users():
-    return render_template("users.html", users=load_users(), page="users")
+    info = user_security_info()   # 2FA methods and last sign-in per user, from Authelia's database
+    return render_template("users.html", users=load_users(), page="users", sec=info)
+
+
+# ---------- Authelia's database (read-only): sign-ins, bans, 2FA registrations ----------
+def authelia_db():
+    """Read-only connection to Authelia's SQLite database, or None if it isn't there or has no tables yet."""
+    import sqlite3
+    path = db_path()
+    if not os.path.isfile(path):
+        return None
+    try:
+        con = sqlite3.connect(f"file:{urllib.parse.quote(path)}?mode=ro", uri=True, timeout=3)
+        con.row_factory = sqlite3.Row
+        con.execute("SELECT 1 FROM authentication_logs LIMIT 1")
+        return con
+    except sqlite3.Error:
+        return None
+
+
+_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
+
+
+def db_time(value):
+    """Authelia stores UTC timestamps in a few text formats; return an aware datetime in TZ, or None."""
+    if not value:
+        return None
+    m = _TS_RE.match(str(value))
+    if not m:
+        return None
+    dt = datetime.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    return dt.astimezone(TZINFO)
+
+
+def fmt_time(dt):
+    if not dt:
+        return ""
+    today = now().date()
+    if dt.date() == today:
+        return dt.strftime("Today %H:%M:%S")
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+app.jinja_env.filters["when"] = fmt_time
+
+
+def active_bans(con):
+    """Bans that are in force now: not revoked, not expired, and either permanent or not yet past `expires`."""
+    out = []
+    cur = now()
+    for kind, table, col in (("user", "banned_user", "username"), ("ip", "banned_ip", "ip")):
+        try:
+            rows = con.execute(f"SELECT id, time, expires, expired, revoked, {col} AS target, source, reason "
+                               f"FROM {table} WHERE revoked = 0 AND expired IS NULL ORDER BY time DESC").fetchall()
+        except Exception:
+            continue   # older Authelia without ban tables
+        for r in rows:
+            until = db_time(r["expires"])
+            if until and until <= cur:
+                continue
+            out.append({"kind": kind, "id": r["id"], "target": r["target"], "since": db_time(r["time"]),
+                        "until": until, "source": r["source"], "reason": r["reason"] or ""})
+    return out
+
+
+def user_security_info():
+    """{username: {"totp": bool, "passkeys": n, "last": datetime|None, "banned": bool}}; None if no database."""
+    con = authelia_db()
+    if not con:
+        return None
+    info = {}
+    def get(u):
+        return info.setdefault(u, {"totp": False, "passkeys": 0, "last": None, "banned": False})
+    try:
+        for r in con.execute("SELECT username FROM totp_configurations"):
+            get(r["username"])["totp"] = True
+        for r in con.execute("SELECT username, COUNT(*) AS n FROM webauthn_credentials GROUP BY username"):
+            get(r["username"])["passkeys"] = r["n"]
+        for r in con.execute("SELECT username, MAX(time) AS t FROM authentication_logs WHERE successful = 1 "
+                             "GROUP BY username"):
+            get(r["username"])["last"] = db_time(r["t"])
+        for b in active_bans(con):
+            if b["kind"] == "user":
+                get(b["target"])["banned"] = True
+    except Exception:
+        app.logger.exception("Reading Authelia's database failed")
+    finally:
+        con.close()
+    return info
+
+
+@app.route("/activity")
+@login_required
+def activity():
+    con = authelia_db()
+    if not con:
+        return render_template("activity.html", page="activity", nodb=True, db=db_path(),
+                               audit=read_audit(), known=set(load_users()))
+    try:
+        bans = active_bans(con)
+        rows = con.execute("SELECT time, successful, banned, username, auth_type, remote_ip FROM authentication_logs "
+                           "ORDER BY id DESC LIMIT 200").fetchall()
+        since = now() - timedelta(hours=24)
+        logs, ok24, fail24 = [], 0, 0
+        for r in rows:
+            t = db_time(r["time"])
+            logs.append({"time": t, "ok": bool(r["successful"]), "banned": bool(r["banned"]),
+                         "user": r["username"], "method": r["auth_type"], "ip": r["remote_ip"] or ""})
+            if t and t >= since:
+                if r["successful"]:
+                    ok24 += 1
+                else:
+                    fail24 += 1
+    finally:
+        con.close()
+    return render_template("activity.html", page="activity", bans=bans, logs=logs, ok24=ok24, fail24=fail24,
+                           known=set(load_users()), audit=read_audit())
+
+
+@app.route("/activity/unban", methods=["POST"])
+@login_required
+def unban():
+    kind = request.form.get("kind")
+    ban_id = request.form.get("id", "")
+    target = request.form.get("target", "")
+    if kind not in ("user", "ip") or not ban_id.isdigit():
+        abort(400)
+    if not AUTHELIA_BIN:
+        flash("authelia binary not available in this image.", "error")
+        return redirect(url_for("activity"))
+    r = subprocess.run([AUTHELIA_BIN, "storage", "bans", kind, "revoke", "--id", ban_id, "--config", CONFIG_FILE],
+                       capture_output=True, text=True, timeout=30, env=CLI_ENV)
+    if r.returncode == 0:
+        audit("Unbanned " + ("user" if kind == "user" else "IP"), target)
+        flash(f"Unbanned {'user' if kind == 'user' else 'IP'} {target}. They can sign in again.", "ok")
+    else:
+        flash(f"Unban failed: {cli_message(r.stdout + r.stderr)}", "error")
+    back = request.form.get("back", "")
+    if not back.startswith("/") or back.startswith("//"):
+        back = url_for("activity")
+    return redirect(back)
 
 
 @app.route("/users/new", methods=["GET", "POST"])
@@ -562,6 +816,7 @@ def user_new():
                 "groups": parse_groups(request.form.get("groups")),
             }
             save_users(all_users)
+            audit("User created", name, "groups: " + (", ".join(all_users[name]["groups"]) or "none"))
             flash(f"User '{name}' created.", "ok")
             return redirect(url_for("users"))
     return render_template("user_form.html", user=None, name="", page="users")
@@ -579,6 +834,7 @@ def user_edit(name):
         if action == "delete":
             del all_users[name]
             save_users(all_users)
+            audit("User deleted", name)
             flash(f"User '{name}' deleted.", "ok")
             return redirect(url_for("users"))
         if action == "password":
@@ -589,13 +845,24 @@ def user_edit(name):
             else:
                 u["password"] = ph.hash(pw)
                 save_users(all_users)
+                audit("Password set", name)
                 flash("Password updated.", "ok")
             return redirect(url_for("user_edit", name=name))
+        before = {k: u.get(k) for k in ("displayname", "email", "groups", "disabled")}
         u["displayname"] = request.form.get("displayname", "").strip() or name
         u["email"] = request.form.get("email", "").strip()
         u["groups"] = parse_groups(request.form.get("groups"))
         u["disabled"] = request.form.get("disabled") == "on"
         save_users(all_users)
+        changes = []
+        for k, label in (("displayname", "name"), ("email", "email"), ("groups", "groups"), ("disabled", "disabled")):
+            if before[k] != u[k]:
+                old, new = before[k], u[k]
+                if k == "groups":
+                    old, new = ", ".join(old or []) or "none", ", ".join(new or []) or "none"
+                changes.append(f"{label}: {old} → {new}")
+        if changes:
+            audit("User updated", name, "; ".join(changes))
         flash("User updated.", "ok")
         return redirect(url_for("user_edit", name=name))
     return render_template("user_form.html", user=u, name=name, page="users")
@@ -610,18 +877,34 @@ def user_reset_2fa(name):
     if not AUTHELIA_BIN:
         flash("authelia binary not available in this image.", "error")
         return redirect(url_for("user_edit", name=name))
-    cmds = [["storage", "user", "totp", "delete", name],
-            ["storage", "user", "webauthn", "delete", name, "--all"]]
+    cmds = [("TOTP", ["storage", "user", "totp", "delete", name]),
+            ("WebAuthn", ["storage", "user", "webauthn", "delete", name, "--all"])]
     msgs, failed = [], False
-    for c in cmds:
+    for label, c in cmds:
         r = subprocess.run([AUTHELIA_BIN, *c, "--config", CONFIG_FILE],
                            capture_output=True, text=True, timeout=30, env=CLI_ENV)
-        out = re.sub(r"\x1b\[[0-9;]*m", "", r.stdout + r.stderr).strip()
-        msgs.append(f"{' '.join(c[2:4])}: {out or 'ok'}")
-        # "no such registration" style errors are fine; surface everything anyway
-        failed = failed or (r.returncode != 0 and "not found" not in out.lower() and "no rows" not in out.lower())
+        out = cli_message(r.stdout + r.stderr)
+        low = out.lower()
+        if "schema outdated" in low and "version 0" in low:
+            # Same cause for both commands: report it once, in plain words.
+            flash("2FA reset for '%s' failed: Authelia's database has no tables yet. Authelia creates them the "
+                  "first time it starts with this configuration; start Authelia once, then try again." % name, "error")
+            return redirect(url_for("user_edit", name=name))
+        # "nothing registered" is not a failure
+        nothing = r.returncode != 0 and bool(re.search(r"not found|no rows|no (totp|webauthn)", low))
+        bad = r.returncode != 0 and not nothing
+        failed = failed or bad
+        msgs.append(f"{label}: " + (out if bad else "nothing registered" if nothing else "removed"))
+    audit("2FA reset" + (" (partly failed)" if failed else ""), name, " | ".join(msgs))
     flash("2FA reset for '%s'. %s" % (name, " | ".join(msgs)), "error" if failed else "ok")
     return redirect(url_for("user_edit", name=name))
+
+
+def cli_message(text):
+    """Authelia CLI output without colour codes and without the usage/help text it prints after an error."""
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text or "")
+    text = re.split(r"\n\s*Usage:", text, maxsplit=1)[0].strip()
+    return re.sub(r"^Error:\s*", "", text)
 
 
 # ---------- configuration ----------
@@ -629,7 +912,7 @@ AUTHELIA_BIN = shutil.which("authelia")
 # Authelia treats every AUTHELIA_* env var as a config key and warns about unknown ones,
 # so hide this app's own settings from the CLI (real keys like AUTHELIA_STORAGE_* pass through).
 _OWN_ENV = {"AUTHELIA_CONFIG_DIR", "AUTHELIA_CONFIG_FILE", "AUTHELIA_USERS_FILE",
-            "AUTHELIA_CONTAINER", "AUTHELIA_DB_FILE"}
+            "AUTHELIA_CONTAINER", "AUTHELIA_DB_FILE", "AUTHELIA_URL"}
 CLI_ENV = {k: v for k, v in os.environ.items() if k not in _OWN_ENV}
 
 
@@ -643,7 +926,9 @@ def authelia_validate(text):
             fh.write(text)
         r = subprocess.run([AUTHELIA_BIN, "validate-config", "--config", tmp],
                            capture_output=True, text=True, timeout=30, env=CLI_ENV)
-        out = re.sub(r"\x1b\[[0-9;]*m", "", (r.stdout + r.stderr)).strip()
+        out = re.sub(r"\x1b\[[0-9;]*m", "", (r.stdout + r.stderr))
+        # drop the usage/help block the CLI prints after "Error: configuration validation failed"
+        out = re.sub(r"\n\s*Usage:.*?(?=\n\s*Configuration |\Z)", "\n", out, flags=re.S).strip()
         return r.returncode == 0, out
     except Exception as e:
         return None, str(e)
@@ -681,39 +966,92 @@ def make_diff(old, new, old_name, new_name):
 @app.route("/config", methods=["GET", "POST"])
 @login_required
 def config():
+    disk = read_text(CONFIG_FILE)
+    disk_fp = fingerprint(disk)
     if request.method == "POST":
         text = request.form.get("content", "").replace("\r\n", "\n")
         action = request.form.get("action", "save")
+        # Fingerprint of the file as it was when the page was first opened; kept across Validate/Show changes.
+        base = request.form.get("base") or disk_fp
+        overwrote = action == "overwrite"
+        if overwrote:   # the user chose to replace a file that changed elsewhere
+            base, action = disk_fp, "save"
+        from_backup = os.path.basename(request.form.get("from_backup", ""))
+
+        def page(**kw):
+            return render_template("config.html", content=text, page="config", base=base, disk=disk,
+                                   from_backup=from_backup, **kw)
+
         if action == "diff":
-            d = make_diff(read_text(CONFIG_FILE), text, "current", "edited")
+            d = make_diff(disk, text, "current", "edited")
             if not d:
                 flash("No changes compared to the current file.", "ok")
-            return render_template("config.html", content=text, page="config", diff=d)
+            return page(diff=d)
+        if action == "save" and base != disk_fp:
+            flash("Not saved: configuration.yml was changed outside this page since you opened it. "
+                  "Review the difference below, then load the current file or overwrite it.", "error")
+            return page(conflict=True, diff=make_diff(disk, text, "on disk now", "your edits"))
         try:
             parsed = yaml.safe_load(text)
             if not isinstance(parsed, dict):
                 raise ValueError("Top level of configuration must be a mapping.")
         except Exception as e:
             flash(f"Invalid YAML, not saved: {e}", "error")
-            return render_template("config.html", content=text, page="config")
+            return page()
         ok, out = authelia_validate(text)
         if action == "validate":
             if ok is None:
                 flash(f"Validation unavailable: {out}", "error")
             else:
                 flash("Authelia validation passed." if ok else "Authelia validation failed.", "ok" if ok else "error")
-            return render_template("config.html", content=text, page="config", vout=out)
+            return page(vout=out)
         if ok is False and request.form.get("force") != "on":
             flash("Authelia validation failed, not saved. Fix the errors or tick 'Save anyway'.", "error")
-            return render_template("config.html", content=text, page="config", vout=out, failed=True)
-        atomic_write(CONFIG_FILE, text)
+            return page(vout=out, failed=True)
+        bk = atomic_write(CONFIG_FILE, text)
+        delta = [l for l in difflib.unified_diff(disk.splitlines(), text.splitlines(), lineterm="", n=0)
+                 if not l.startswith(("---", "+++", "@@"))]
+        added = sum(1 for l in delta if l.startswith("+"))
+        removed = sum(1 for l in delta if l.startswith("-"))
+        notes = [f"+{added} −{removed} lines"]
+        if from_backup:
+            notes.append("from backup " + from_backup)
+        if overwrote:
+            notes.append("overwrote a change made outside the editor")
+        if ok is False:
+            notes.append("saved although Authelia's validation failed")
+        if bk:
+            notes.append("previous version backed up as " + os.path.basename(bk))
+        audit("Configuration saved", os.path.basename(CONFIG_FILE), "; ".join(notes))
         flash("Configuration saved (backup created). Restart Authelia to apply.", "ok")
         return redirect(url_for("config", saved=1))
-    content = ""
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, encoding="utf-8") as fh:
-            content = fh.read()
-    return render_template("config.html", content=content, page="config", saved=bool(request.args.get("saved")))
+
+    # "Open in editor" from a configuration backup: the backup's text as unsaved edits of the current file
+    from_backup = request.args.get("from_backup", "")
+    if from_backup:
+        path = os.path.realpath(os.path.join(BACKUP_DIR, os.path.basename(from_backup)))
+        if (os.path.dirname(path) != os.path.realpath(BACKUP_DIR) or not os.path.isfile(path)
+                or not os.path.basename(path).startswith(os.path.basename(CONFIG_FILE) + ".")):
+            abort(404)
+        flash(f"Loaded {os.path.basename(path)} into the editor. It isn't saved yet: review the changes, "
+              "then Validate & save to apply it.", "ok")
+        return render_template("config.html", content=read_text(path), page="config", base=disk_fp, disk=disk,
+                               from_backup=os.path.basename(path))
+    return render_template("config.html", content=disk, page="config", saved=bool(request.args.get("saved")),
+                           ondisk=True, base=disk_fp)
+
+
+def fingerprint(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+@app.route("/config/fingerprint")
+@login_required
+def config_fingerprint():
+    """Polled by the editor to notice changes made elsewhere (e.g. over SSH) while the page is open."""
+    resp = jsonify(fp=fingerprint(read_text(CONFIG_FILE)))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/restart", methods=["POST"])
@@ -721,26 +1059,66 @@ def config():
 def restart():
     if not (AUTHELIA_CONTAINER or RESTART_FLAG_FILE):
         abort(404)
-    ref = request.referrer or url_for("config")
+    # Back to the page the button was on, without ?saved=1 (so the restart prompt doesn't reappear).
+    # ?restarting=<mode> makes the page show a live status card (see /restart/status and app.js).
+    ref = urllib.parse.urlparse(request.referrer or "").path or url_for("config")
+    if not ref.startswith("/") or ref.startswith("//"):
+        ref = url_for("config")
     if RESTART_FLAG_FILE:
         try:
             with open(RESTART_FLAG_FILE, "w") as fh:
                 fh.write(now().isoformat() + "\n")
-            flash("Restart requested. Authelia restarts within a few seconds.", "ok")
         except Exception as e:
             flash(f"Couldn't create the restart request file: {e}", "error")
-        return redirect(ref.split("?")[0])
+            return redirect(ref)
+        audit("Restart requested", "Authelia", "flag file")
+        return redirect(ref + "?restarting=flag")
     try:
         import docker
         docker.from_env().containers.get(AUTHELIA_CONTAINER).restart(timeout=10)
-        flash(f"Container '{AUTHELIA_CONTAINER}' restarted.", "ok")
     except Exception as e:
         if "No such file" in str(e) or "Permission denied" in str(e):
             flash("Restart failed: can't use the Docker socket. Mount /var/run/docker.sock into this "
                   "container and give its user access to it (group_add with the docker group id).", "error")
         else:
             flash(f"Restart failed: {e}", "error")
-    return redirect(ref.split("?")[0])  # drop ?saved=1 so the restart prompt doesn't reappear
+        return redirect(ref)
+    audit("Restarted", AUTHELIA_CONTAINER, "Docker socket")
+    return redirect(ref + "?restarting=socket")
+
+
+def authelia_health():
+    """'up' / 'down' from Authelia's /api/health, or None when AUTHELIA_URL is not set."""
+    if not AUTHELIA_URL:
+        return None
+    import urllib.request
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+
+    def probe():
+        with urllib.request.urlopen(AUTHELIA_URL + "/api/health", timeout=2) as r:
+            return "up" if r.status == 200 else "down"
+    # A hard limit: while Authelia's container is stopped, resolving its name can hang longer than
+    # urlopen's timeout (DNS lookups aren't covered by it).
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(probe).result(timeout=2.5)
+    except (FutureTimeout, Exception):
+        return "down"
+    finally:
+        pool.shutdown(wait=False)
+
+
+@app.route("/restart/status")
+@login_required
+def restart_status():
+    """Polled by the page after a restart. flag: pending (host service hasn't picked it up) / done."""
+    flag = None
+    if RESTART_FLAG_FILE:
+        flag = "pending" if os.path.exists(RESTART_FLAG_FILE) else "done"
+    health = None if flag == "pending" else authelia_health()   # not needed until the host picked it up
+    resp = jsonify(flag=flag, authelia=health, container=AUTHELIA_CONTAINER or "authelia")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ---------- backups ----------
@@ -799,7 +1177,7 @@ def backup_db():
         return redirect(url_for("backups"))
     os.makedirs(BACKUP_DIR, exist_ok=True)
     base = os.path.basename(src)
-    dest = os.path.join(BACKUP_DIR, f"{base}.{now().strftime('%Y%m%d-%H%M%S')}")
+    dest = backup_name(base)
     try:
         try:
             import sqlite3
@@ -822,6 +1200,7 @@ def backup_db():
         return redirect(url_for("backups"))
     for old in sorted(glob.glob(os.path.join(BACKUP_DIR, base + ".*")))[:-MAX_BACKUPS]:
         os.remove(old)
+    audit("Database backed up", os.path.basename(dest), method)
     flash(f"Database backed up as {os.path.basename(dest)} ({method}).", "ok")
     return redirect(url_for("backups"))
 
@@ -851,11 +1230,13 @@ def backup_view(name):
         if not target:
             abort(400)
         atomic_write(target, content)
+        audit("Backup restored", base, "from " + name)
         flash(f"Restored {base} from {name}.", "ok")
         return redirect(url_for("backups"))
     # What a restore would change: current file -> this backup.
     diff = make_diff(read_text(target), content, "current", name) if target else []
-    return render_template("backup_view.html", name=name, content=content, page="backups", diff=diff)
+    return render_template("backup_view.html", name=name, content=content, page="backups", diff=diff,
+                           is_config=target == CONFIG_FILE)
 
 
 @app.route("/backups/<name>/delete", methods=["POST"])
@@ -865,8 +1246,34 @@ def backup_delete(name):
     if os.path.dirname(path) != os.path.realpath(BACKUP_DIR) or not os.path.isfile(path):
         abort(404)
     os.remove(path)
+    audit("Backup deleted", name)
     flash(f"Backup {name} deleted.", "ok")
     return redirect(url_for("backups"))
+
+
+@app.errorhandler(OSError)
+def file_error(e):
+    """A file couldn't be read or written (usually folder permissions): explain it instead of a bare 500.
+    Nothing is half-written: backups are taken first and files are replaced atomically."""
+    app.logger.exception("File error on %s %s", request.method, request.path)
+    where = getattr(e, "filename", None) or "a file"
+    reason = e.strerror or str(e)
+    hint = ""
+    if isinstance(e, PermissionError):
+        hint = (" Check that the container's user (%d:%d) can write the Authelia folder and its backups "
+                "folder, for example with: sudo chown -R %d:%d <your Authelia folder>"
+                % (os.getuid(), os.getgid(), os.getuid(), os.getgid()))
+    msg = f"Nothing was changed: couldn't access {where} ({reason}).{hint}"
+    if request.is_json or request.headers.get("X-CSRF-Token"):
+        return jsonify(ok=False, error=msg), 500
+    if request.method == "GET":   # a page couldn't load: show the reason (a redirect could loop)
+        return render_template("error.html", message=msg, page=None), 500
+    flash(msg, "error")
+    # back to the page the action came from (a config edit is kept in the browser and offered for restore)
+    back = urllib.parse.urlparse(request.referrer or "").path
+    if not back.startswith("/") or back.startswith("//"):
+        back = url_for("users")
+    return redirect(back)
 
 
 @app.after_request

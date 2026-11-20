@@ -20,8 +20,19 @@ Runs as a single container with a distroless runtime image and no pinned Autheli
 
 **Configuration**
 - Edit `configuration.yml` in the browser; YAML syntax check plus `authelia validate-config` before saving
+- Code editor (CodeMirror) with YAML highlighting, search (Ctrl+F), folding, and switches for line numbers, line wrapping and indent guides (remembered per browser)
+- Autocomplete and hover docs from Authelia's own configuration schema (the one matching the Authelia release in the image): option names, allowed values and descriptions, plus live warnings for unknown options and invalid values; Ctrl+Space shows suggestions, Ctrl+S validates and saves
+- Problems marked on the line itself: YAML syntax errors as you type, and Authelia's validation errors and warnings after Validate or Save (hover for the message, or click the problems counter for the list)
+- Unsaved edits are kept in your browser, so they survive an expired session or a closed tab; the editor offers to restore them
+- A "Modified" marker and a "Leave site?" prompt while edits are unsaved
+- Secrets (`jwt_secret`, `encryption_key`, client secrets, private keys, ...) blurred on screen until the cursor is in them
+- A notice as soon as `configuration.yml` is changed elsewhere while you edit
+- Activity page: recent sign-ins, failed attempts and current lockouts from Authelia's database, with Unban; the Users page shows each user's 2FA methods and last sign-in
+- Admin action log: every change made through this app (and admin sign-ins) with time, IP and details, shown on the Activity page
+- Open a configuration backup in the editor to review, adjust and save it with validation
+- Won't silently overwrite changes made elsewhere: if `configuration.yml` changed on disk (for example over SSH) after you opened the page, Save stops and shows the difference, and you choose to load the current file or overwrite it
 - **Show changes**: diff of your edit against the current file before you save
-- Optional **Restart Authelia** button (no Docker socket needed, see [Restart button](#restart-authelia-from-the-ui))
+- Optional **Restart Authelia** button (no Docker socket needed, see [Restart button](#restart-authelia-from-the-ui)), with a live status that confirms Authelia came back up
 
 **Backups**
 - Automatic timestamped backup on every save, restore and delete, grouped by category (Configuration, Users, Database)
@@ -110,6 +121,7 @@ One of `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` or `ADMIN_PASSWORD_HASH_FILE` is 
 | `AUTHELIA_USERS_FILE` | `users_database.yml` | Users file name, relative to the config dir. |
 | `AUTHELIA_DB_FILE` | `<config dir>/db.sqlite3` | SQLite file, used only if `storage.local.path` is not set in the configuration. |
 | `MAX_BACKUPS` | `30` | Backups kept per file; older ones are deleted. |
+| `AUDIT_LOG_FILE` | `/config/admin_audit.log` | Where the admin action log is written (JSON lines, about 1 MB plus one older `.1` file). |
 
 Backups are stored in `<config dir>/backups`.
 
@@ -141,6 +153,7 @@ Passkeys are enabled when both `ADMIN_RP_ID` and `ADMIN_ORIGIN` are set.
 |---|---|---|
 | `RESTART_FLAG_FILE` | – | Enables the Restart button in flag-file mode (recommended): the button creates this file, for example `/config/.restart-request`, and a host service restarts Authelia. |
 | `AUTHELIA_CONTAINER` | – | Name of the Authelia container. Enables the Restart button in Docker-socket mode. If both are set, the flag file is used. |
+| `AUTHELIA_URL` | – | Authelia's address as this container reaches it, for example `http://authelia:9091` (same Docker network) or `http://192.168.1.10:9091`. After a restart the page checks Authelia's `/api/health` and reports when it is back up, or that it didn't come back. Without it, the page only confirms that the host picked up the restart request. |
 
 ### Reverse proxy
 
@@ -224,6 +237,8 @@ Terminate TLS at your proxy and forward to the container (`http://authelia-admin
 
 ## Updating
 
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each build.
+
 ```bash
 git pull
 docker compose build --pull
@@ -270,7 +285,7 @@ The free native arm64 runner is available for public repositories. In a private 
 
 You can also start it from the Actions tab, with an option to force a rebuild.
 
-Python packages are pinned in `requirements.txt`. Dependabot (`.github/dependabot.yml`) opens weekly pull requests for them and for the GitHub Actions versions. For **patch and minor** updates, `.github/workflows/dependabot-automerge.yml` builds the image once as a check, merges the pull request, and (for Python updates) publishes a new image. **Major** updates stay open for you to review.
+Python packages are pinned in `requirements.txt`, and the editor's packages (CodeMirror, esbuild) in `editor/package-lock.json`. Dependabot (`.github/dependabot.yml`) opens weekly pull requests for them and for the GitHub Actions versions. For **patch and minor** updates, `.github/workflows/dependabot-automerge.yml` builds the image once as a check, merges the pull request, and (for Python and editor updates) publishes a new image. **Major** updates stay open for you to review.
 
 Every build overwrites only `latest`; it also gets its own permanent tag with the build date and time in UTC, for example `romekd/authelia-admin:2026.11.18-1408`, which is never overwritten. The project has no automated tests, so an update that breaks the app could be published; to control when your server updates, use a date tag instead of `latest` and move it forward after checking the new image.
 
@@ -299,12 +314,15 @@ GitHub pauses scheduled workflows in repositories with no activity for 60 days (
 ## Project layout
 
 ```
-Dockerfile            multi-stage build (Authelia CLI, Python deps, distroless runtime)
+Dockerfile            multi-stage build (Authelia CLI + schema, Python deps, editor bundle, distroless runtime)
 docker-compose.yml    example deployment
 requirements.txt      pinned Python dependencies
+CHANGELOG.md          what changed in each build
 app/app.py            Flask application
 app/templates/        Jinja templates
-app/static/app.js     all browser-side code (the CSP forbids inline scripts)
+app/static/app.js     browser-side code for every page (the CSP forbids inline scripts)
+editor/               configuration editor (CodeMirror), bundled into app/static/editor.js at build time;
+                      versions pinned in editor/package-lock.json
 ```
 
 ## License

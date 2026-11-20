@@ -18,17 +18,21 @@
 <div class="card">
   <div class="search">{{ ic('search') }}<input type="search" placeholder="Search users" data-filter="#users-table" aria-label="Search users"></div>
   <table class="stack" id="users-table">
-    <thead><tr><th>User</th><th>Name</th><th>Email</th><th>Groups</th><th></th></tr></thead>
+    <thead><tr><th>User</th><th>Name</th><th>Email</th><th>Groups</th>{% if sec is not none %}<th>2FA</th><th>Last sign-in</th>{% endif %}<th></th></tr></thead>
     <tbody>
     {% for name, u in users|dictsort %}
     <tr class="{{ 'off' if u.disabled }}">
-      <td data-label="User"><span class="who"><span class="av c{{ name|length % 5 }}">{{ (u.displayname or name)[:2]|upper }}</span><span><a href="{{ url_for('user_edit', name=name) }}">{{ name }}</a>{% if u.disabled %} <span class="tag dis">disabled</span>{% endif %}</span></span></td>
+      <td data-label="User"><span class="who"><span class="av c{{ name|length % 5 }}">{{ (u.displayname or name)[:2]|upper }}</span><span><a href="{{ url_for('user_edit', name=name) }}">{{ name }}</a>{% if u.disabled %} <span class="tag dis">disabled</span>{% endif %}{% if sec and sec.get(name, {}).banned %} <a class="tag bad" href="{{ url_for('activity') }}">locked out</a>{% endif %}</span></span></td>
       <td data-label="Name">{{ u.displayname }}</td>
       <td data-label="Email">{{ u.email }}</td>
       <td data-label="Groups"><span>{% for g in u.groups or [] %}<span class="tag">{{ g }}</span>{% endfor %}</span></td>
+      {% if sec is not none %}{% set s = sec.get(name, {}) %}
+      <td data-label="2FA"><span>{% if s.totp %}<span class="tag">TOTP</span>{% endif %}{% if s.passkeys %}<span class="tag">{{ s.passkeys }} passkey{{ 's' if s.passkeys != 1 }}</span>{% endif %}{% if not s.totp and not s.passkeys %}<span class="tag mut">none</span>{% endif %}</span></td>
+      <td data-label="Last sign-in">{{ s.last|when if s.last else '—' }}</td>
+      {% endif %}
       <td><a class="btn sec" href="{{ url_for('user_edit', name=name) }}">Edit</a></td>
     </tr>
-    {% else %}<tr><td colspan="5">No users yet.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="7">No users yet.</td></tr>{% endfor %}
     </tbody>
   </table>
 </div>

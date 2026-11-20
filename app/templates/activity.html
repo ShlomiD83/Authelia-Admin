@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ic %}
+{% block body %}
+<div class="pagehead"><h1>Activity</h1></div>
+{% if nodb %}
+<div class="card">
+  <p style="margin:0">Authelia's database isn't available at <code>{{ db }}</code>, or it has no tables yet (Authelia creates them the first time it starts). Sign-ins and lockouts are read from there.</p>
+</div>
+{% else %}
+<div class="stats">
+  <div class="stat"><span>Locked out now</span><b>{{ bans|length }}</b></div>
+  <div class="stat"><span>Failed sign-ins, 24 h</span><b>{{ fail24 }}</b></div>
+  <div class="stat"><span>Successful sign-ins, 24 h</span><b>{{ ok24 }}</b></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Locked out</h2>
+  {% if bans %}
+  <table class="stack">
+    <thead><tr><th>Who</th><th>Since</th><th>Until</th><th>Reason</th><th></th></tr></thead>
+    <tbody>
+    {% for b in bans %}
+    <tr>
+      <td data-label="Who">{% if b.kind == 'user' %}<span class="tag">user</span> {% if b.target in known %}<a href="{{ url_for('user_edit', name=b.target) }}">{{ b.target }}</a>{% else %}{{ b.target }}{% endif %}{% else %}<span class="tag">IP</span> {{ b.target }}{% endif %}</td>
+      <td data-label="Since">{{ b.since|when }}</td>
+      <td data-label="Until">{{ b.until|when if b.until else 'permanent' }}</td>
+      <td data-label="Reason">{{ b.reason }}{% if b.source and b.source != 'regulation' %} <span style="color:var(--mut)">({{ b.source }})</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{{ url_for('unban') }}" class="inline" data-confirm="Lift the lockout of {{ b.target }}?">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="kind" value="{{ b.kind }}"><input type="hidden" name="id" value="{{ b.id }}"><input type="hidden" name="target" value="{{ b.target }}">
+          <button class="btn sec">Unban</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="margin:0;color:var(--mut)">Nobody is locked out. Authelia locks a user or IP out after too many failed sign-ins (the <code>regulation:</code> settings).</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Recent sign-ins</h2>
+  <div class="search">{{ ic('search') }}<input type="search" placeholder="Filter by user, IP or result" data-filter="#log-table" aria-label="Filter sign-ins"></div>
+  <table class="stack" id="log-table">
+    <thead><tr><th>Time</th><th>User</th><th>Result</th><th>Step</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for l in logs %}
+    <tr>
+      <td data-label="Time">{{ l.time|when }}</td>
+      <td data-label="User">{% if l.user in known %}<a href="{{ url_for('user_edit', name=l.user) }}">{{ l.user }}</a>{% else %}{{ l.user }}{% endif %}</td>
+      <td data-label="Result">{% if l.ok %}<span class="tag ok">success</span>{% elif l.banned %}<span class="tag bad">blocked (locked out)</span>{% else %}<span class="tag bad">failed</span>{% endif %}</td>
+      <td data-label="Step">{{ {'1FA': 'password', 'TOTP': 'TOTP code', 'WebAuthn': 'passkey / security key', 'Duo': 'Duo'}.get(l.method, l.method) }}</td>
+      <td data-label="IP">{{ l.ip }}</td>
+    </tr>
+    {% else %}<tr><td colspan="5">No sign-ins recorded yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p style="color:var(--mut);margin:.75rem 0 0;font-size:.85rem">The latest 200 entries from Authelia's database, times in {{ tzname }}.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Admin actions</h2>
+  <div class="search">{{ ic('search') }}<input type="search" placeholder="Filter by action, user or detail" data-filter="#audit-table" aria-label="Filter admin actions"></div>
+  <table class="stack" id="audit-table">
+    <thead><tr><th>Time</th><th>Action</th><th>On</th><th>Details</th><th>By</th></tr></thead>
+    <tbody>
+    {% for a in audit %}
+    <tr>
+      <td data-label="Time">{{ a.when|when }}</td>
+      <td data-label="Action">{% if a.action.startswith('Sign-in failed') or a.action.startswith('Sign-in blocked') %}<span class="tag bad">{{ a.action }}</span>{% else %}{{ a.action }}{% endif %}</td>
+      <td data-label="On">{% if a.target in known %}<a href="{{ url_for('user_edit', name=a.target) }}">{{ a.target }}</a>{% else %}{{ a.target }}{% endif %}</td>
+      <td data-label="Details" style="overflow-wrap:anywhere">{{ a.detail }}</td>
+      <td data-label="By">{{ a.admin or 'not signed in' }}{% if a.via %} <span style="color:var(--mut)">({{ a.via }})</span>{% endif %}<br><span style="color:var(--mut);font-size:.82rem">{{ a.ip }}</span></td>
+    </tr>
+    {% else %}<tr><td colspan="5">Nothing recorded yet. Changes made through this app (users, passwords, configuration, backups, restarts, unbans) and admin sign-ins appear here.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p style="color:var(--mut);margin:.75rem 0 0;font-size:.85rem">The latest 200 entries from <code>{{ audit_file }}</code>.</p>
+</div>
+{% endblock %}

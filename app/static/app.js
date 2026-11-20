@@ -170,3 +170,62 @@ document.addEventListener("click", function (e) {
   f.value = Array.from(a, function (n) { return cs[n % cs.length]; }).join("");
   f.type = "text";
 });
+
+// ---- after "Restart Authelia": live status card (page URL has ?restarting=flag|socket) ----
+(function () {
+  var mode = new URLSearchParams(location.search).get("restarting");
+  if (mode !== "flag" && mode !== "socket") return;
+  document.addEventListener("DOMContentLoaded", function () {
+    var main = document.querySelector("main");
+    if (!main) return;
+    var card = document.createElement("div");
+    card.className = "flash restart-status";
+    card.setAttribute("role", "status");
+    main.insertBefore(card, main.firstChild);
+    // drop the parameter so a reload doesn't start watching again
+    history.replaceState(null, "", location.pathname);
+
+    var start = Date.now(), pickedAt = mode === "socket" ? start : null, sawDown = false, downSince = null;
+    function secs(t) { return Math.round((Date.now() - t) / 1000); }
+    function show(cls, text) { card.className = "flash restart-status " + cls; card.textContent = text; }
+    var done = false;
+    function finish(cls, text) { show(cls, text); done = true; }
+    show("wait", mode === "flag" ? "Restart requested. Waiting for the host service to pick it up…" : "Authelia container restarted. Checking that it comes back…");
+
+    function poll() {
+      fetch("/restart/status", { credentials: "same-origin", cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (s) {
+          if (mode === "flag" && !pickedAt) {
+            if (s.flag === "pending") {
+              if (secs(start) >= 20) finish("error", "The restart request wasn't picked up after 20 seconds. Check on the host that the authelia-restart.path unit is enabled and running (systemctl status authelia-restart.path).");
+              return;
+            }
+            pickedAt = Date.now();
+          }
+          if (s.authelia === null) {
+            finish("ok", "Restart request picked up by the host. (Set AUTHELIA_URL to also check that Authelia comes back up.)");
+            return;
+          }
+          if (s.authelia === "down") {
+            sawDown = true;
+            if (!downSince) downSince = Date.now();
+            if (secs(downSince) >= 60) finish("error", "Authelia hasn't come back after 60 seconds. Check its logs on the host: docker logs " + s.container);
+            else show("wait", "Authelia is restarting… (" + secs(pickedAt) + " s)");
+            return;
+          }
+          // up
+          if (sawDown || mode === "socket") finish("ok", "Authelia is up again (" + secs(pickedAt) + " s).");
+          else if (secs(pickedAt) >= 15) finish("ok", "Authelia is responding. It never looked down, so the restart was either very quick or didn't happen; check docker ps on the host if in doubt.");
+        })
+        .catch(function () { /* this app itself unreachable for a moment: keep trying */ })
+        .then(function () {
+          if (!done && secs(start) > 120) finish("error", "Stopped checking after 2 minutes.");
+          // Authelia restarts in about a second, so check often until it has been seen going down;
+          // one check at a time (a check can take up to 2.5 s while Authelia's container is stopped).
+          if (!done) setTimeout(poll, sawDown ? 1500 : 400);
+        });
+    }
+    poll();
+  });
+})();

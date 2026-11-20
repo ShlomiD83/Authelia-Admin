@@ -22,6 +22,12 @@ RUN set -eux; \
     go get golang.org/x/net@latest github.com/klauspost/compress@latest golang.org/x/crypto@master; \
     go mod tidy; \
     CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o /out/authelia ./cmd/authelia
+# Authelia's JSON schema for configuration.yml, from the same release, for the editor's autocomplete,
+# hover docs and live checks.
+RUN set -eux; \
+    d="$(ls -d docs/static/schemas/v4.* | sort -V | tail -n1)"; \
+    cp "$d/json-schema/configuration.json" /out/config-schema.json; \
+    echo "Schema: $d"
 
 # ---------------------------------------------------------------------------
 # Stage 2: install the Python dependencies into a plain directory (no venv, no pip
@@ -35,7 +41,19 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --target /deps -r requirements.txt
 
 # ---------------------------------------------------------------------------
-# Stage 3: runtime. Distroless Wolfi Python: no shell, no package manager, no pip,
+# Stage 3: bundle the configuration editor (CodeMirror) into one static JS file.
+# Versions are pinned in editor/package-lock.json. Node is only used here, not shipped.
+# ---------------------------------------------------------------------------
+FROM cgr.dev/chainguard/node:latest-dev AS editor-build
+USER root
+WORKDIR /editor
+COPY editor/package.json editor/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY editor/src ./src
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 4: runtime. Distroless Wolfi Python: no shell, no package manager, no pip,
 # no musl, no system SQLite.
 # ---------------------------------------------------------------------------
 FROM cgr.dev/chainguard/python:latest
@@ -49,6 +67,8 @@ ENV PYTHONPATH=/deps \
 COPY --from=pybuild /deps /deps
 COPY --from=authelia-build /out/authelia /usr/local/bin/authelia
 COPY --chmod=755 app/ /srv/app/
+COPY --chmod=644 --from=editor-build /editor/dist/editor.js /srv/app/static/editor.js
+COPY --chmod=644 --from=authelia-build /out/config-schema.json /srv/app/static/config-schema.json
 
 # Smoke tests (exec form, no shell needed): fail the build if either piece is broken.
 RUN ["/usr/bin/python", "-c", "import flask, yaml, argon2, docker, gunicorn, webauthn, segno, zoneinfo; zoneinfo.ZoneInfo('Asia/Jerusalem'); print('python deps OK')"]

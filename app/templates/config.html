@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_diff.html" import show %}
+{% block head %}<script defer src="{{ url_for('static', filename='editor.js') }}"></script>{% endblock %}
 {% block body %}
 {% if saved %}
 <div class="card" style="border-color:var(--pri)">
@@ -21,8 +22,23 @@
   <h1>configuration.yml</h1>
   <form method="post">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-    <textarea name="content" spellcheck="false">{{ content }}</textarea>
-    {% if diff %}<h2 style="margin-top:1rem">Changes (current to edited)</h2>{{ show(diff) }}{% endif %}
+    <input type="hidden" name="base" value="{{ base }}">
+    {% if from_backup %}<input type="hidden" name="from_backup" value="{{ from_backup }}">
+    <p class="from-backup">Editing the version from backup <code>{{ from_backup }}</code>. Nothing is saved until you click Validate &amp; save. <a href="{{ url_for('config') }}" data-leave-ok>Discard and open the current file</a></p>{% endif %}
+    {% if conflict %}
+    <div class="conflict">
+      <h2>The file was changed somewhere else</h2>
+      <p>Someone (or something) changed <code>configuration.yml</code> after you opened this page, for example over SSH. Saving now would replace those changes. Lines marked <span class="del-sample">−</span> exist only in the file on disk; lines marked <span class="add-sample">+</span> exist only in your edits.</p>
+      {{ show(diff) }}
+      <div class="row">
+        <a class="btn sec" href="{{ url_for('config') }}" data-leave-ok>Load the current file</a>
+        <button class="btn bad" name="action" value="overwrite">Overwrite with my edits</button>
+      </div>
+      <p style="color:var(--mut);margin:.5rem 0 0;font-size:.85rem">Loading the current file keeps your edits in this browser; the editor will offer to restore them. Overwriting backs up the current file first.</p>
+    </div>
+    {% endif %}
+    <textarea name="content" spellcheck="false" data-editor data-schema="{{ url_for('static', filename='config-schema.json') }}" data-fingerprint="{{ url_for('config_fingerprint') }}"{% if ondisk %} data-ondisk{% else %} data-disk="{{ disk }}"{% endif %}{% if saved %} data-saved{% endif %}{% if vout %} data-validation="{{ vout }}"{% endif %}>{{ content }}</textarea>
+    {% if diff and not conflict %}<h2 style="margin-top:1rem">Changes (current to edited)</h2>{{ show(diff) }}{% endif %}
     {% if vout %}<pre>{{ vout }}</pre>{% endif %}
     <div class="row">
       <button class="btn" name="action" value="save">Validate &amp; save</button>

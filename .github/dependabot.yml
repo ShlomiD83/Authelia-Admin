@@ -10,6 +10,17 @@ updates:
       day: monday
     open-pull-requests-limit: 5
 
+  # CodeMirror and esbuild for the configuration editor (bundled into the image)
+  - package-ecosystem: npm
+    directory: /editor
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      codemirror:
+        patterns: ["@codemirror/*", "@lezer/*", "@replit/*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

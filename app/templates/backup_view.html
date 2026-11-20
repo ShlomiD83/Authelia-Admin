@@ -9,8 +9,15 @@
   <textarea readonly style="min-height:50vh">{{ content }}</textarea>
   <form method="post" class="row" data-confirm="Restore this backup over the live file? The current file is backed up first.">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-    <button class="btn">Restore</button><a class="btn sec" href="{{ url_for('backups') }}">Back</a>
+    {% if is_config %}
+    <a class="btn" href="{{ url_for('config', from_backup=name) }}">Open in editor</a>
+    <button class="btn sec">Restore now</button>
+    {% else %}
+    <button class="btn">Restore</button>
+    {% endif %}
+    <a class="btn sec" href="{{ url_for('backups') }}">Back</a>
   </form>
+  {% if is_config %}<p style="color:var(--mut);margin:.25rem 0 0;font-size:.85rem"><b>Open in editor</b> loads this version as unsaved changes, so you can adjust it and save it with the usual validation. <b>Restore now</b> writes it back immediately, without validation.</p>{% endif %}
   <form method="post" action="{{ url_for('backup_delete', name=name) }}" class="row" data-confirm="Permanently delete {{ name }}? This cannot be undone.">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     <button class="btn bad">Delete this backup</button>

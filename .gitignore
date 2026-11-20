@@ -6,3 +6,7 @@ authelia-config/
 backups/
 admin_passkeys.json
 .restart-request
+editor/node_modules/
+editor/dist/
+app/static/editor.js
+app/static/config-schema.json
