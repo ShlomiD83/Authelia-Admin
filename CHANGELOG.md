@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-20 (image `2026.11.20-1234`)
+
 ### Added
 - **Code editor for `configuration.yml`** (CodeMirror): YAML highlighting, search (Ctrl+F), folding, and
   switches for line numbers, line wrapping and indent guides, remembered per browser.
