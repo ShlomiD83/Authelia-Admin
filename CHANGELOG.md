@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-20 (image `2026.11.20-1319`)
+
 ### Security
 - **Signed passkeys**: each entry in `admin_passkeys.json` is signed with a key derived from `SECRET_KEY`.
   A passkey added or changed directly in the file (for example by someone with write access to the
