@@ -290,7 +290,7 @@ document.addEventListener("DOMContentLoaded", function () {
           if (!ver.hidden) {
             var tag = document.createElement("span");
             tag.className = "tag ok";
-            tag.textContent = "up to date";
+            tag.textContent = "Authelia version up to date";
             tag.title = "Config checks use Authelia " + s.version + ", the latest release";
             ver.appendChild(tag);
           }
