@@ -16,9 +16,11 @@ Runs as a single container with a distroless runtime image and no pinned Autheli
   <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/dashboard.png" alt="Dashboard: Authelia status, configuration, security, users, backups, recent sign-ins and admin actions" width="880">
 </p>
 
-| Configuration editor | Activity | Users |
-|---|---|---|
-| <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/config-editor.png" alt="Configuration editor with YAML highlighting, indent guides and blurred secrets" width="290"> | <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/activity.png" alt="Activity: lockouts with Unban, recent sign-ins and admin actions" width="290"> | <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/users.png" alt="Users with groups, 2FA methods and last sign-in" width="290"> |
+| Configuration editor | Activity |
+|---|---|
+| <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/config-editor.png" alt="Configuration editor with YAML highlighting, indent guides and blurred secrets" width="430"> | <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/activity.png" alt="Activity: lockouts with Unban, recent sign-ins and admin actions" width="430"> |
+| **Users** | **Backups** |
+| <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/users.png" alt="Users with groups, 2FA methods and last sign-in" width="430"> | <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/backups.png" alt="Backups: export and import, database backup with its daily schedule, backups by file" width="430"> |
 
 ## Features
 
@@ -215,7 +217,18 @@ To turn it off, remove the variable and recreate the container.
 
 ### Restart Authelia from the UI
 
-**Flag file (recommended, no Docker access for the container).** Set `RESTART_FLAG_FILE: /config/.restart-request`. On the host, create a systemd path unit that reacts to the file (adjust the path to your Authelia folder and the container name):
+**Flag file (recommended, no Docker access for the container).** The button creates a request file in your Authelia folder, and a systemd unit on the host restarts the Authelia container when it appears.
+
+The easy way: run the install script on the Docker host, with your Authelia folder (the one mounted as `/config`) and the Authelia container's name:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/scripts/install-restart-service.sh
+sudo bash install-restart-service.sh --folder /path/to/authelia --container authelia
+```
+
+It creates, enables and starts the units below, checks the folder, container and systemd first, and removes an old unanswered request so nothing restarts by surprise. `--dry-run` shows what it would write without changing anything; `--uninstall` removes it. Then set `RESTART_FLAG_FILE: /config/.restart-request` in the admin container's compose file and recreate it.
+
+Or by hand: set `RESTART_FLAG_FILE: /config/.restart-request` and create a systemd path unit that reacts to the file (adjust the path to your Authelia folder and the container name):
 
 `/etc/systemd/system/authelia-restart.path`
 
@@ -349,6 +362,8 @@ app/templates/        Jinja templates
 app/static/app.js     browser-side code for every page (the CSP forbids inline scripts)
 editor/               configuration editor (CodeMirror), bundled into app/static/editor.js at build time;
                       versions pinned in editor/package-lock.json
+scripts/              install-restart-service.sh: host side of the Restart button (systemd units)
+tests/                smoke-test.sh and its sample data, run by CI before each image is published
 ```
 
 ## License
