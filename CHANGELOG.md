@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-21 (image `2026.11.21-1850`)
+
 ### Added
 - **Backup schedule on the Backups page**: turn the automatic database backup on or off, set its time and
   how many to keep. Saved in `admin_settings.json` in the Authelia folder; it takes precedence over
