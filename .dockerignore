@@ -13,3 +13,4 @@ backups
 editor/node_modules
 editor/dist
 tests
+docs

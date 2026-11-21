@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import yaml
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from flask import (Flask, abort, flash, g, jsonify, make_response, redirect, render_template,
+from flask import (Flask, abort, flash, g, has_request_context, jsonify, make_response, redirect, render_template,
                    request, send_from_directory, session, url_for)
 
 try:  # QR codes for TOTP setup; optional (the secret can always be typed in by hand)
@@ -265,10 +265,13 @@ ACTIVITY_MAX_ROWS = 2000
 
 def audit(action, target="", detail=""):
     """Record an admin action. Never lets a logging problem break the action itself."""
-    # "admin" only when signed in: a failed sign-in can come from anyone
-    entry = {"time": now().isoformat(timespec="seconds"), "admin": ADMIN_USER if session.get("auth") else "",
-             "via": session.get("via", "") if session else "",
-             "ip": request.remote_addr if request else "", "action": action,
+    # "admin" only when signed in: a failed sign-in can come from anyone. Outside a request (the automatic
+    # database backup) there is no admin or IP: the entry is marked "automatic".
+    in_request = has_request_context()
+    entry = {"time": now().isoformat(timespec="seconds"),
+             "admin": (ADMIN_USER if session.get("auth") else "") if in_request else "automatic",
+             "via": session.get("via", "") if in_request else "",
+             "ip": request.remote_addr if in_request else "", "action": action,
              "target": str(target)[:200], "detail": str(detail)[:500]}
     global audit_error
     try:
@@ -1441,7 +1444,8 @@ def backups():
     groups = [{"key": k, "title": t, "hint": h, "items": by_cat[k]}
               for k, t, h in BACKUP_GROUPS if by_cat[k] or k != "other"]
     return render_template("backups.html", groups=groups, page="backups", db_file=db_path(),
-                           db_exists=os.path.isfile(db_path()))
+                           db_exists=os.path.isfile(db_path()), db_auto=DB_BACKUP_AT, db_keep=DB_BACKUP_KEEP,
+                           db_next=next_db_backup(), db_last=latest_db_backup_time(), db_state=db_backup_state)
 
 
 @app.route("/backups/new-db", methods=["POST"])
@@ -1451,6 +1455,22 @@ def backup_db():
     if not os.path.isfile(src):
         flash(f"Database not found at {src}. Check storage.local.path and the /config mount.", "error")
         return redirect(url_for("backups"))
+    try:
+        dest, method = make_db_backup()
+    except Exception as e:
+        flash(f"Database backup failed: {e}", "error")
+        return redirect(url_for("backups"))
+    audit("Database backed up", os.path.basename(dest), method)
+    flash(f"Database backed up as {os.path.basename(dest)} ({method}).", "ok")
+    return redirect(url_for("backups"))
+
+
+def make_db_backup():
+    """Back up Authelia's SQLite database into the backups folder; keeps the newest DB_BACKUP_KEEP.
+    Returns (path, method). Raises on failure (nothing half-written is left behind)."""
+    src = db_path()
+    if not os.path.isfile(src):
+        raise FileNotFoundError(f"database not found at {src}")
     os.makedirs(BACKUP_DIR, exist_ok=True)
     base = os.path.basename(src)
     dest = backup_name(base)
@@ -1469,16 +1489,74 @@ def backup_db():
             shutil.copy2(src, dest)
             method = "file copy (sqlite3 module unavailable; stop Authelia first for a guaranteed-consistent copy)"
         os.chmod(dest, 0o600)  # contains 2FA secrets
-    except Exception as e:
+    except Exception:
         if os.path.exists(dest):
             os.remove(dest)
-        flash(f"Database backup failed: {e}", "error")
-        return redirect(url_for("backups"))
-    for old in sorted(glob.glob(os.path.join(BACKUP_DIR, base + ".*")))[:-MAX_BACKUPS]:
+        raise
+    for old in sorted(glob.glob(os.path.join(BACKUP_DIR, base + ".*")))[:-DB_BACKUP_KEEP]:
         os.remove(old)
-    audit("Database backed up", os.path.basename(dest), method)
-    flash(f"Database backed up as {os.path.basename(dest)} ({method}).", "ok")
-    return redirect(url_for("backups"))
+    return dest, method
+
+
+# ---- automatic daily database backup ----
+# DB_BACKUP_TIME: HH:MM in TZ (default 03:00), or "off". DB_BACKUP_KEEP: database backups kept (default 7).
+_dbt = os.environ.get("DB_BACKUP_TIME", "03:00").strip().lower()
+_m = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", _dbt)
+DB_BACKUP_AT = (int(_m.group(1)), int(_m.group(2))) if _m else None
+if _dbt not in ("off", "false", "") and not _m:
+    print(f"WARNING: invalid DB_BACKUP_TIME {_dbt!r} (use HH:MM or off); automatic database backups are off",
+          flush=True)
+try:
+    DB_BACKUP_KEEP = max(1, int(os.environ.get("DB_BACKUP_KEEP", "7")))
+except ValueError:
+    DB_BACKUP_KEEP = 7
+db_backup_state = {"last": None, "error": None}   # last automatic run (datetime) / last error message
+
+
+def latest_db_backup_time():
+    base = os.path.basename(db_path())
+    times = [backup_time(os.path.basename(f)) for f in glob.glob(os.path.join(BACKUP_DIR, base + ".*"))]
+    times = [t for t in times if t]
+    return max(times) if times else None
+
+
+def next_db_backup():
+    if not DB_BACKUP_AT:
+        return None
+    n = now()
+    t = n.replace(hour=DB_BACKUP_AT[0], minute=DB_BACKUP_AT[1], second=0, microsecond=0)
+    return t if t > n else t + timedelta(days=1)
+
+
+def _run_db_backup():
+    if not os.path.isfile(db_path()):
+        return   # Authelia hasn't created its database (yet)
+    try:
+        dest, method = make_db_backup()
+        db_backup_state.update(last=now(), error=None)
+        audit("Database backed up (automatic)", os.path.basename(dest), method)
+    except Exception as e:
+        db_backup_state.update(last=now(), error=str(e))
+        app.logger.exception("Automatic database backup failed")
+        audit("Database backup failed (automatic)", os.path.basename(db_path()), str(e))
+
+
+def _db_backup_loop():
+    time.sleep(120)   # let the app start first
+    # catch up after downtime: the last database backup is more than a day old
+    last = latest_db_backup_time()
+    if last is None or now() - last > timedelta(hours=25):
+        _run_db_backup()
+    while True:
+        target = next_db_backup()
+        while now() < target:   # short steps, so clock changes or a suspended host don't throw it off
+            time.sleep(min(60.0, max(1.0, (target - now()).total_seconds())))
+        _run_db_backup()
+        time.sleep(61)   # never twice for the same minute
+
+
+if DB_BACKUP_AT:
+    threading.Thread(target=_db_backup_loop, name="db-backup", daemon=True).start()
 
 
 @app.route("/backups/<name>/download")

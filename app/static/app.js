@@ -345,3 +345,4 @@ document.addEventListener("DOMContentLoaded", function () {
     else addClose(el);
   });
 });
+

@@ -8,7 +8,17 @@
 A small, self-hosted web UI for managing an [Authelia](https://www.authelia.com/) instance that uses the
 **file user backend** and **SQLite storage**: users, passwords, `configuration.yml`, backups and 2FA resets, from your browser (phone included).
 
-Runs as a single container with a distroless runtime image and no pinned Authelia version. A prebuilt multi-arch image for **amd64 and arm64** is published on Docker Hub as [`romekd/authelia-admin`](https://hub.docker.com/r/romekd/authelia-admin). It is developed and tested on a Raspberry Pi (arm64); the amd64 image is built by CI from the same Dockerfile but has not been tested yet.
+Runs as a single container with a distroless runtime image and no pinned Authelia version. A prebuilt multi-arch image for **amd64 and arm64** is published on Docker Hub as [`romekd/authelia-admin`](https://hub.docker.com/r/romekd/authelia-admin) and on GHCR as [`ghcr.io/shlomid83/authelia-admin`](https://github.com/ShlomiD83/Authelia-Admin/pkgs/container/authelia-admin). It is developed on a Raspberry Pi (arm64), and every build is smoke-tested on both architectures before it is published.
+
+## Screenshots
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/dashboard.png" alt="Dashboard: Authelia status, configuration, security, users, backups, recent sign-ins and admin actions" width="880">
+</p>
+
+| Configuration editor | Activity | Users |
+|---|---|---|
+| <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/config-editor.png" alt="Configuration editor with YAML highlighting, indent guides and blurred secrets" width="290"> | <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/activity.png" alt="Activity: lockouts with Unban, recent sign-ins and admin actions" width="290"> | <img src="https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/docs/screenshots/users.png" alt="Users with groups, 2FA methods and last sign-in" width="290"> |
 
 ## Features
 
@@ -34,12 +44,12 @@ Runs as a single container with a distroless runtime image and no pinned Autheli
 - Admin action log: every change made through this app (and admin sign-ins) with time, IP and details, shown on the Activity page
 - Open a configuration backup in the editor to review, adjust and save it with validation
 - Won't silently overwrite changes made elsewhere: if `configuration.yml` changed on disk (for example over SSH) after you opened the page, Save stops and shows the difference, and you choose to load the current file or overwrite it
-- **Show changes**: diff of your edit against the current file before you save
-- Optional **Restart Authelia** button (no Docker socket needed, see [Restart button](#restart-authelia-from-the-ui)), with a live status that confirms Authelia came back up
+- **Show changes**: diff of your edit against the current file before you save- Optional **Restart Authelia** button (no Docker socket needed, see [Restart button](#restart-authelia-from-the-ui)), with a live status that confirms Authelia came back up
 
 **Backups**
 - Automatic timestamped backup on every save, restore and delete, grouped by category (Configuration, Users, Database)
 - "Back up database now": consistent online SQLite backup, with download and delete
+- **Automatic daily database backup** (default 03:00, keeping the last 7; `DB_BACKUP_TIME`, `DB_BACKUP_KEEP`), with a catch-up run after downtime
 - Backup view shows exactly what a restore would change; old backups are pruned (`MAX_BACKUPS`)
 
 **Security**
@@ -123,7 +133,9 @@ One of `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` or `ADMIN_PASSWORD_HASH_FILE` is 
 | `AUTHELIA_CONFIG_FILE` | `configuration.yml` | Authelia configuration file name, relative to the config dir. |
 | `AUTHELIA_USERS_FILE` | `users_database.yml` | Users file name, relative to the config dir. |
 | `AUTHELIA_DB_FILE` | `<config dir>/db.sqlite3` | SQLite file, used only if `storage.local.path` is not set in the configuration. |
-| `MAX_BACKUPS` | `30` | Backups kept per file; older ones are deleted. |
+| `MAX_BACKUPS` | `30` | Backups kept per file (configuration and users); older ones are deleted. |
+| `DB_BACKUP_TIME` | `03:00` | Time of the automatic daily database backup, in `TZ`; `off` turns it off. If the container was down at that time and the last database backup is over a day old, one runs shortly after start. |
+| `DB_BACKUP_KEEP` | `7` | Database backups kept (automatic and manual together); older ones are deleted. |
 | `ACTIVITY_DAYS` | `30` | How many days back the Activity page shows sign-ins and admin actions. |
 | `AUDIT_LOG_FILE` | `/config/admin_audit.log` | Where the admin action log is written (JSON lines, about 1 MB plus one older `.1` file). |
 

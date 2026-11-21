@@ -6,7 +6,14 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **Automatic daily database backup** at `DB_BACKUP_TIME` (default 03:00; `off` to disable), keeping the
+  last `DB_BACKUP_KEEP` (default 7) database backups, with a catch-up run after downtime. Shown on the
+  Backups page and recorded in the admin log.
+- **Screenshots** in the README (also shown on Docker Hub).
+
+### Changed
+- Database backups are pruned by `DB_BACKUP_KEEP` (default 7) instead of `MAX_BACKUPS` (30).
 
 ## 2026-11-21 (image `2026.11.21-0736`)
 

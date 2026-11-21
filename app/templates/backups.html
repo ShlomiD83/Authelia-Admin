@@ -8,6 +8,12 @@
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     <button class="btn" {{ 'disabled' if not db_exists }}>Back up database now</button>
   </form>
+  <p style="margin:.75rem 0 0">
+    {% if db_auto %}<span class="tag ok">automatic</span> Daily at {{ '%02d:%02d'|format(db_auto[0], db_auto[1]) }} ({{ tzname }}), keeping the last {{ db_keep }} database backups.
+    Next: {{ db_next|when|lower }}.{% if db_last %} Latest: {{ db_last|when|lower }}.{% endif %}
+    {% else %}<span class="tag mut">automatic off</span> Set <code>DB_BACKUP_TIME</code> (for example <code>03:00</code>) to back up the database daily.{% endif %}
+  </p>
+  {% if db_state.error %}<div class="flash error" style="margin-top:.6rem">The last automatic database backup failed: {{ db_state.error }}</div>{% endif %}
   <p style="color:var(--mut);margin:.75rem 0 0">Database backups contain 2FA secrets (encrypted with your storage encryption key; keep that key separately). To restore: stop Authelia, download the backup, and replace the database file with it.</p>
 </div>
 {% for g in groups %}
