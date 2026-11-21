@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-21 (image `2026.11.21-1108`)
+
 ### Added
 - **Sign-out after inactivity**: after `ADMIN_IDLE_TIMEOUT` minutes (default 30; `0` turns it off) without
   activity, with a warning and a **Stay signed in** button a minute before. Background refreshes (dashboard,
