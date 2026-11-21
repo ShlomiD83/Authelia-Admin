@@ -1,17 +1,20 @@
 name: Build and push image
 
-# Builds the multi-arch image (amd64 + arm64) and pushes it to Docker Hub.
+# Builds the multi-arch image (amd64 + arm64) and pushes it to Docker Hub and the GitHub Container Registry:
+#   docker.io/<DOCKERHUB_USERNAME>/authelia-admin   and   ghcr.io/<repository owner, lowercase>/authelia-admin
 #  - manually (Actions tab > Run workflow, or `gh workflow run docker.yml`) -> rebuilds latest with the
 #    newest Authelia release and base-image patches
 #  - on a version tag (v1.2.3) you push yourself -> tags latest, 1.2.3, 1.2
 #  - from the weekly CVE check (cve-check.yml), only when it finds fixable vulnerabilities
-#  - after Dependabot auto-merges a Python package update (dependabot-automerge.yml)
+#  - after Dependabot auto-merges a Python or editor package update (dependabot-automerge.yml)
 # It has no schedule of its own. Each build overwrites only `latest` and also gets its own permanent tag with
 # the build date and time in UTC (e.g. 2026.11.18-1408), so you can pin a known-good image or roll back.
+# Both registries always get the same tags.
 #
 # Required repository secrets (Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME   your Docker Hub user name
 #   DOCKERHUB_TOKEN      a Docker Hub access token with Read & Write scope
+# GHCR uses the workflow's own GITHUB_TOKEN (permission packages: write); no secret needed.
 
 on:
   push:
@@ -21,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  packages: write   # push to ghcr.io
 
 # One build at a time; a newer request waits (and replaces an older waiting one) instead of running
 # in parallel, so the last build always publishes the latest code.
@@ -47,30 +51,52 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Prepare
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
           # Changes daily, so a run on a new day re-fetches the latest Authelia release and dependencies
           # instead of reusing a cached build stage.
           echo "BUILD_STAMP=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+          echo "DOCKERHUB_IMAGE=docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}" >> "$GITHUB_ENV"
+          echo "GHCR_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push by digest
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Labels: org.opencontainers.image.source links the GHCR package to this repository
+      - name: Image labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
+
+      - name: Build and push by digest (both registries)
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
           build-args: BUILD_STAMP=${{ env.BUILD_STAMP }}
-          outputs: type=image,name=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,"name=${{ env.DOCKERHUB_IMAGE }},${{ env.GHCR_IMAGE }}",push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
 
@@ -92,6 +118,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Prepare
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          echo "DOCKERHUB_IMAGE=docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}" >> "$GITHUB_ENV"
+          echo "GHCR_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_ENV"
+
       - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
@@ -100,28 +133,41 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Image tags
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.GHCR_IMAGE }}
           tags: |
             type=raw,value=latest
             type=raw,value={{date 'YYYY.MM.DD-HHmm'}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Create and push the manifest list
+      # The per-platform images were pushed to both registries, so one command creates every tag in both
+      - name: Create and push the manifest lists
         working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+            $(printf "${DOCKERHUB_IMAGE}@sha256:%s " *)
 
       - name: Inspect
-        run: docker buildx imagetools inspect ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+        run: |
+          docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:latest"
+          docker buildx imagetools inspect "${GHCR_IMAGE}:latest"

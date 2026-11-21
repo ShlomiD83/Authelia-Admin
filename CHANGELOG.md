@@ -6,7 +6,9 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- Images are also published to the GitHub Container Registry as `ghcr.io/shlomid83/authelia-admin`, with
+  the same tags as on Docker Hub.
 
 ## 2026-11-21 (image `2026.11.21-0610`)
 

@@ -263,15 +263,17 @@ You don't have to build anything: use the published image in compose and drop th
 
 ```yaml
     image: romekd/authelia-admin:latest
+    # or the same image from the GitHub Container Registry:
+    # image: ghcr.io/shlomid83/authelia-admin:latest
 ```
 
-`.github/workflows/docker.yml` builds the image for amd64 (on an amd64 runner) and arm64 (on a native arm64 runner) and publishes one multi-arch tag to Docker Hub (only arm64 has been tested so far):
+`.github/workflows/docker.yml` builds the image for amd64 (on an amd64 runner) and arm64 (on a native arm64 runner) and publishes the same multi-arch tags to Docker Hub and to the GitHub Container Registry (ghcr.io):
 
 - the **Run workflow** button on the Actions tab (or `gh workflow run docker.yml`) rebuilds `latest` with the newest Authelia release and base-image security patches
 - pushing a version tag such as `v1.2.3` also runs it and publishes `latest`, `1.2.3` and `1.2`
 - the weekly CVE check (below) runs it when the published image has fixable vulnerabilities
 
-To use it in your own fork, add two repository secrets (Settings > Secrets and variables > Actions): `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read and Write scope). The image is published as `<your user>/authelia-admin`. Then use it in compose instead of building:
+To use it in your own fork, add two repository secrets (Settings > Secrets and variables > Actions): `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read and Write scope). The image is published as `<your Docker Hub user>/authelia-admin` and `ghcr.io/<your GitHub user>/authelia-admin`; GHCR needs no secret (the workflow's own token is used). A new GHCR package starts out private: make it public once under your GitHub profile > Packages > authelia-admin > Package settings > Change visibility. Then use it in compose instead of building:
 
 ```yaml
     image: youruser/authelia-admin:latest   # remove the "build: ." line
