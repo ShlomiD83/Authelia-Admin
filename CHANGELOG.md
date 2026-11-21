@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-21 (image `2026.11.21-0806`)
+
 ### Added
 - **Automatic daily database backup** at `DB_BACKUP_TIME` (default 03:00; `off` to disable), keeping the
   last `DB_BACKUP_KEEP` (default 7) database backups, with a catch-up run after downtime. Shown on the
