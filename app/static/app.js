@@ -346,3 +346,70 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 
+
+// ---- idle sign-out: report real activity, warn a minute before the session ends ----
+document.addEventListener("DOMContentLoaded", function () {
+  if (!document.querySelector('form[action$="/logout"]')) return;   // only when signed in
+  var csrfEl = document.querySelector('input[name="csrf"]');
+  var lastPing = Date.now(), warn = null, deadline = null, tick = null;
+
+  function ping() {
+    lastPing = Date.now();
+    fetch("/session/ping", { method: "POST", credentials: "same-origin",
+                             headers: { "X-CSRF-Token": csrfEl ? csrfEl.value : "" } })
+      .then(function (r) { if (r.status === 401) location.href = "/login"; else hideWarn(); })
+      .catch(function () {});
+  }
+  ["keydown", "mousedown", "mousemove", "touchstart", "wheel"].forEach(function (ev) {
+    document.addEventListener(ev, function () {
+      if (Date.now() - lastPing > 60000) ping();   // at most once a minute
+    }, { passive: true });
+  });
+
+  function hideWarn() {
+    if (warn) { fadeOut(warn, 0); warn = null; }
+    if (tick) { clearInterval(tick); tick = null; }
+    deadline = null;
+  }
+  function showWarn(seconds) {
+    deadline = Date.now() + seconds * 1000;
+    if (!warn) {
+      warn = document.createElement("div");
+      warn.className = "flash error idle-warn";
+      warn.setAttribute("role", "alert");
+      var text = document.createElement("span");
+      var btn = document.createElement("button");
+      btn.type = "button"; btn.className = "btn"; btn.textContent = "Stay signed in";
+      btn.addEventListener("click", ping);
+      warn.appendChild(text); warn.appendChild(btn);
+      var holder = document.getElementById("toasts");
+      if (holder) holder.insertBefore(warn, holder.firstChild);
+      tick = setInterval(render, 1000);
+    }
+    render();
+  }
+  function render() {
+    if (!warn || !deadline) return;
+    var s = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    warn.firstChild.textContent = "You'll be signed out in " + s + " s because there was no activity. ";
+    if (s <= 0 && !ending) { ending = true; setTimeout(check, 1500); }
+  }
+  // The server decides: the page goes to the sign-in page only once the server reports the session ended
+  // (activity in another tab may have kept it alive).
+  var ending = false;
+  function check() {
+    fetch("/session/status", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        ending = false;
+        if (!s.signed_in) { location.href = "/login"; return; }
+        if (s.left === null || s.left === undefined) return;   // idle sign-out is off
+        if (s.left <= 0) { ending = true; setTimeout(check, 1500); }   // the next check signs out
+        else if (s.left <= 60) showWarn(s.left);
+        else hideWarn();
+      })
+      .catch(function () { ending = false; });
+  }
+  setInterval(check, 15000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) check(); });
+});

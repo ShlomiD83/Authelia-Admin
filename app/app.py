@@ -168,12 +168,20 @@ _trust = int(os.environ.get("TRUST_PROXY", "0") or 0)
 if _trust > 0:
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_trust)
+# Sign out after this many minutes without activity (page loads, actions, typing or clicking in a page).
+# Background refreshes (dashboard status, restart status, the editor's change check) don't count.
+# ADMIN_IDLE_TIMEOUT=0 turns it off (the session then still ends an hour after the last request).
+try:
+    IDLE_TIMEOUT = max(0, int(os.environ.get("ADMIN_IDLE_TIMEOUT", "30"))) * 60
+except ValueError:
+    IDLE_TIMEOUT = 30 * 60
+
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY") or secrets.token_hex(32),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Strict",
     SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "false").lower() == "true",
-    PERMANENT_SESSION_LIFETIME=3600,
+    PERMANENT_SESSION_LIFETIME=max(3600, IDLE_TIMEOUT + 300),
     MAX_CONTENT_LENGTH=2 * 1024 * 1024,
 )
 
@@ -210,10 +218,67 @@ app.jinja_env.globals["audit_file"] = os.environ.get("AUDIT_LOG_FILE") or os.pat
 # a single gunicorn worker process, so a thread lock is enough.
 _change_lock = threading.Lock()
 
+# Requests the browser makes on its own: they don't count as activity for the idle sign-out
+PASSIVE_ENDPOINTS = {"dashboard_status", "restart_status", "config_fingerprint", "session_status", "static", "healthz"}
+
+
+@app.before_request
+def larger_uploads_for_import():
+    # set before the CSRF check reads the form; everything else keeps the 2 MB limit
+    if request.endpoint == "import_zip":
+        request.max_content_length = 100 * 1024 * 1024
+
+
+@app.errorhandler(413)
+def too_large(e):
+    flash("That upload is too large (the limit for an import is 100 MB).", "error")
+    return redirect(url_for("backups") if session.get("auth") else url_for("login"))
+
+
+@app.before_request
+def idle_sign_out():
+    if not (IDLE_TIMEOUT and session.get("auth")):
+        return None
+    t = time.time()
+    seen = session.get("seen") or t
+    if t - seen >= IDLE_TIMEOUT:
+        audit("Signed out (inactivity)", "", f"no activity for {IDLE_TIMEOUT // 60} minutes")
+        session.clear()
+        # stored for the login page, also when a background check is what notices
+        flash(f"You were signed out after {IDLE_TIMEOUT // 60} minutes without activity. "
+              "Configuration edits are kept in this browser and can be restored.", "error")
+        if request.endpoint in PASSIVE_ENDPOINTS or request.is_json or request.headers.get("X-CSRF-Token"):
+            return jsonify(ok=False, signed_in=False, signed_out=True, error="Signed out after inactivity."), 401
+        return redirect(url_for("login"))
+    if request.endpoint not in PASSIVE_ENDPOINTS:
+        session["seen"] = t
+    return None
+
+
+@app.route("/session/status")
+def session_status():
+    """How long until the idle sign-out (passive: doesn't count as activity). Polled by every page."""
+    if not session.get("auth"):
+        return jsonify(signed_in=False)
+    left = IDLE_TIMEOUT - (time.time() - (session.get("seen") or time.time())) if IDLE_TIMEOUT else None
+    # rounded up: "0" only once the time is really up (the next request then signs out)
+    import math
+    resp = jsonify(signed_in=True, timeout=IDLE_TIMEOUT, left=None if left is None else max(0, math.ceil(left)))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/session/ping", methods=["POST"])
+def session_ping():
+    """The page reports keyboard/mouse activity (counts as activity; see idle_sign_out)."""
+    if not session.get("auth"):
+        return jsonify(signed_in=False), 401
+    return jsonify(ok=True, left=IDLE_TIMEOUT)
+
 
 @app.before_request
 def one_change_at_a_time():
-    if request.method == "POST" and not request.path.startswith(("/restart/status", "/passkeys/login")):
+    if request.method == "POST" and not request.path.startswith(("/restart/status", "/passkeys/login", "/session/ping")):
         _change_lock.acquire()
         g.holds_change_lock = True
 
@@ -1557,6 +1622,168 @@ def _db_backup_loop():
 
 if DB_BACKUP_AT:
     threading.Thread(target=_db_backup_loop, name="db-backup", daemon=True).start()
+
+
+# ---------- export / import of the whole Authelia folder ----------
+def export_parts():
+    """(name in the zip, path on disk) for everything an export contains, if it exists."""
+    parts = [(os.path.basename(CONFIG_FILE), CONFIG_FILE), (os.path.basename(USERS_FILE), USERS_FILE),
+             (os.path.basename(PASSKEY_FILE), PASSKEY_FILE), (os.path.basename(AUDIT_FILE), AUDIT_FILE),
+             (os.path.basename(AUDIT_FILE) + ".1", AUDIT_FILE + ".1")]
+    return [(n, p) for n, p in parts if os.path.isfile(p)]
+
+
+@app.route("/backups/export")
+@login_required
+def export_zip():
+    import io
+    import sqlite3
+    import zipfile
+    with_backups = request.args.get("backups") == "1"
+    buf = io.BytesIO()
+    names, skipped = [], []
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, path in export_parts():
+            try:
+                with open(path, "rb") as fh:   # an unreadable file is skipped (and listed), not fatal
+                    z.writestr(name, fh.read())
+                names.append(name)
+            except OSError as e:
+                skipped.append(f"{name} ({e.strerror or e})")
+        db = db_path()
+        if os.path.isfile(db):   # consistent copy, safe while Authelia is running
+            fd, tmp = tempfile.mkstemp(suffix=".sqlite3")
+            os.close(fd)
+            try:
+                s, d = sqlite3.connect(db, timeout=30), sqlite3.connect(tmp)
+                try:
+                    s.backup(d)
+                finally:
+                    d.close()
+                    s.close()
+                z.write(tmp, os.path.basename(db))
+                names.append(os.path.basename(db))
+            finally:
+                os.remove(tmp)
+        if with_backups and os.path.isdir(BACKUP_DIR):
+            for f in sorted(glob.glob(os.path.join(BACKUP_DIR, "*"))):
+                if os.path.isfile(f):
+                    try:
+                        with open(f, "rb") as fh:
+                            z.writestr("backups/" + os.path.basename(f), fh.read())
+                    except OSError as e:
+                        skipped.append(f"backups/{os.path.basename(f)} ({e.strerror or e})")
+        z.writestr("manifest.json", json.dumps({
+            "app": "authelia-admin", "exported": now().isoformat(timespec="seconds"),
+            "authelia": authelia_version(), "files": names, "skipped": skipped,
+            "backups_included": with_backups}, indent=2))
+    audit("Exported", "Authelia folder", ", ".join(names) + (" + backups" if with_backups else "")
+          + ("; skipped (unreadable): " + ", ".join(skipped) if skipped else ""))
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/zip"
+    resp.headers["Content-Disposition"] = f'attachment; filename="authelia-export-{now().strftime("%Y%m%d-%H%M")}.zip"'
+    return resp
+
+
+IMPORT_KINDS = {"config": "configuration.yml", "users": "users_database.yml", "db": "database",
+                "passkeys": "admin passkeys"}
+
+
+@app.route("/backups/import", methods=["POST"])
+@login_required
+def import_zip():
+    import sqlite3
+    import zipfile
+
+    up = request.files.get("archive")
+    chosen = set(request.form.getlist("parts")) & set(IMPORT_KINDS)
+    force = request.form.get("force") == "on"
+    back = redirect(url_for("backups"))
+    if not up or not up.filename:
+        flash("Choose an export zip to import.", "error")
+        return back
+    if not chosen:
+        flash("Choose at least one part to import.", "error")
+        return back
+    try:
+        z = zipfile.ZipFile(up.stream)
+    except zipfile.BadZipFile:
+        flash("That file isn't a zip archive.", "error")
+        return back
+    # Find the files by name, at the top of the zip or inside one folder; nothing else is read
+    wanted = {"config": os.path.basename(CONFIG_FILE), "users": os.path.basename(USERS_FILE),
+              "db": os.path.basename(db_path()), "passkeys": os.path.basename(PASSKEY_FILE)}
+    found = {}
+    for info in z.infolist():
+        parts = info.filename.replace("\\", "/").strip("/").split("/")
+        if info.is_dir() or len(parts) > 2 or (len(parts) == 2 and parts[0] == "backups"):
+            continue
+        for kind, name in wanted.items():
+            if parts[-1] == name and kind not in found:
+                found[kind] = info
+    todo = [k for k in IMPORT_KINDS if k in chosen and k in found]
+    missing = [IMPORT_KINDS[k] for k in IMPORT_KINDS if k in chosen and k not in found]
+    if not todo:
+        flash("The zip doesn't contain the chosen parts (" + ", ".join(missing) + ").", "error")
+        return back
+    data = {k: z.read(found[k]) for k in todo}
+
+    # check everything before changing anything
+    try:
+        if "config" in data:
+            text = data["config"].decode("utf-8")
+            if not isinstance(yaml.safe_load(text), dict):
+                raise ValueError("configuration.yml: the top level must be a mapping")
+            ok, out = authelia_validate(text)
+            if ok is False and not force:
+                flash("Not imported: the configuration in the zip fails Authelia's validation. Tick 'Import "
+                      "anyway' to import it regardless. " + out.split("\n\n")[0][:600], "error")
+                return back
+        if "users" in data:
+            u = yaml.safe_load(data["users"].decode("utf-8"))
+            if not isinstance(u, dict) or not isinstance(u.get("users"), dict):
+                raise ValueError("users_database.yml: no 'users' section")
+        if "passkeys" in data and not isinstance(json.loads(data["passkeys"].decode("utf-8")), list):
+            raise ValueError("admin passkeys: not a list")
+        if "db" in data and not data["db"].startswith(b"SQLite format 3\x00"):
+            raise ValueError("database: not an SQLite database")
+    except (ValueError, UnicodeDecodeError, yaml.YAMLError) as e:
+        flash(f"Not imported: {e}.", "error")
+        return back
+
+    # apply; every file is backed up before it's replaced
+    done = []
+    if "config" in data:
+        atomic_write(CONFIG_FILE, data["config"].decode("utf-8"))
+        done.append(IMPORT_KINDS["config"])
+    if "users" in data:
+        atomic_write(USERS_FILE, data["users"].decode("utf-8"))
+        done.append(IMPORT_KINDS["users"])
+    if "passkeys" in data:
+        backup(PASSKEY_FILE)
+        save_passkeys(json.loads(data["passkeys"].decode("utf-8")))
+        done.append(IMPORT_KINDS["passkeys"])
+    if "db" in data:
+        if os.path.isfile(db_path()):
+            make_db_backup()
+        fd, tmp = tempfile.mkstemp(suffix=".sqlite3")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data["db"])
+            s, d = sqlite3.connect(tmp), sqlite3.connect(db_path(), timeout=30)
+            try:
+                s.backup(d)   # writes into the live database safely, page by page
+            finally:
+                d.close()
+                s.close()
+        finally:
+            os.remove(tmp)
+        done.append(IMPORT_KINDS["db"])
+    audit("Imported", up.filename[:100], ", ".join(done) + ("; validation skipped" if force else ""))
+    note = " Not in the zip: " + ", ".join(missing) + "." if missing else ""
+    flash("Imported " + ", ".join(done) + " (the previous versions were backed up). Restart Authelia to apply."
+          + note, "ok")
+    return back
 
 
 @app.route("/backups/<name>/download")

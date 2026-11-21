@@ -1,6 +1,29 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="card">
+  <h2>Export and import</h2>
+  <p style="color:var(--mut);margin:0 0 .6rem">Everything in one zip: <code>configuration.yml</code>, <code>users_database.yml</code>, the database (a consistent copy, safe while Authelia runs), the admin passkeys and the admin log. Use it to move to another server or to keep a copy elsewhere. It contains secrets and password hashes: store it safely.</p>
+  <form method="get" action="{{ url_for('export_zip') }}" class="row" style="align-items:center">
+    <button class="btn">Download export</button>
+    <label style="margin:0;display:inline-flex;gap:.4rem;align-items:center"><input type="checkbox" name="backups" value="1"> Include the backups folder</label>
+  </form>
+  <form method="post" action="{{ url_for('import_zip') }}" enctype="multipart/form-data" class="imp" data-confirm="Import the chosen parts from this zip? The current files are backed up first.">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label for="imp-file">Import an export zip</label>
+    <input type="file" id="imp-file" name="archive" accept=".zip,application/zip" required>
+    <div class="imp-parts">
+      <label><input type="checkbox" name="parts" value="config" checked> configuration.yml</label>
+      <label><input type="checkbox" name="parts" value="users" checked> users_database.yml</label>
+      <label><input type="checkbox" name="parts" value="db" checked> database</label>
+      <label><input type="checkbox" name="parts" value="passkeys"> admin passkeys</label>
+      <label><input type="checkbox" name="force"> Import anyway if the configuration fails validation</label>
+    </div>
+    <button class="btn sec">Import</button>
+    <p style="color:var(--mut);margin:.6rem 0 0;font-size:.85rem">Each file is backed up before it's replaced. Restart Authelia afterwards. Passkeys from another server only work if it used the same <code>SECRET_KEY</code>; otherwise they show as not trusted until you trust them again.</p>
+  </form>
+</div>
+
+<div class="card">
   <h2>Database</h2>
   <p style="color:var(--mut);margin:0 0 .5rem">SQLite storage (TOTP / WebAuthn registrations, 2FA preferences): <code>{{ db_file }}</code></p>
   {% if not db_exists %}<div class="flash error">Database file not found at that path.</div>{% endif %}

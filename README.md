@@ -51,9 +51,11 @@ Runs as a single container with a distroless runtime image and no pinned Autheli
 - "Back up database now": consistent online SQLite backup, with download and delete
 - **Automatic daily database backup** (default 03:00, keeping the last 7; `DB_BACKUP_TIME`, `DB_BACKUP_KEEP`), with a catch-up run after downtime
 - Backup view shows exactly what a restore would change; old backups are pruned (`MAX_BACKUPS`)
+- **Export and import**: download `configuration.yml`, `users_database.yml`, the database (a consistent copy), the admin passkeys and the admin log as one zip (optionally with the backups folder), and import chosen parts from such a zip; the configuration is validated first and every replaced file is backed up
 
 **Security**
 - Admin login with CSRF protection, login rate limit (5 attempts, 15 minutes), strict cookies and a strict CSP
+- **Sign-out after inactivity** (default 30 minutes, `ADMIN_IDLE_TIMEOUT`), with a warning and **Stay signed in** a minute before; background refreshes don't count as activity, and several open tabs stay in sync
 - **Passkeys** (WebAuthn) for the admin login, managed on the Security page
 - **TOTP** second step for password login, with QR-code setup
 - `/healthz` endpoint and a Docker `HEALTHCHECK`
@@ -119,6 +121,7 @@ The container user must be able to **write** the config folder. Check the owner 
 | `ADMIN_PASSWORD` | – | Admin password in plain text. Simple, but the password sits in your compose file. |
 | `ADMIN_PASSWORD_HASH` | – | Admin password as an argon2id hash. Takes precedence over `ADMIN_PASSWORD`. In compose YAML every `$` must be written as `$$`. |
 | `ADMIN_PASSWORD_HASH_FILE` | – | Path to a file containing the hash (no `$` escaping needed). Overrides `ADMIN_PASSWORD_HASH`. |
+| `ADMIN_IDLE_TIMEOUT` | `30` | Minutes without activity (page loads, actions, typing or clicking) before the admin is signed out; a warning appears a minute before. `0` turns it off. |
 | `SECRET_KEY` | random per start | Signs the session cookie and each stored passkey. **Set it**, otherwise every restart logs you out and passkeys aren't protected against changes made outside the app. Use a long random value. Changing it later makes existing passkeys "not trusted" until you trust them again on the Security page. |
 | `COOKIE_SECURE` | `false` | Set to `true` when served over HTTPS. With `true` over plain HTTP, login fails with "Bad CSRF token". |
 | `TZ` | `UTC` | Time zone (IANA name) for backup file names and timestamps. |

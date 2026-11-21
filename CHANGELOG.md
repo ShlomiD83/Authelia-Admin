@@ -6,7 +6,20 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **Sign-out after inactivity**: after `ADMIN_IDLE_TIMEOUT` minutes (default 30; `0` turns it off) without
+  activity, with a warning and a **Stay signed in** button a minute before. Background refreshes (dashboard,
+  restart status, the editor's change check) don't count as activity; several tabs stay in sync. Recorded
+  in the admin log.
+- **Export and import** on the Backups page: one zip with `configuration.yml`, `users_database.yml`, a
+  consistent copy of the database, the admin passkeys and the admin log (optionally the backups folder);
+  files that can't be read are skipped and listed in the zip's manifest. Import chosen parts from such a
+  zip: the configuration is validated first (refused if invalid, unless "Import anyway"), and every
+  replaced file is backed up. Both are recorded in the admin log.
+
+### Changed
+- Before, an open dashboard kept the admin session alive indefinitely (its refreshes renewed the session);
+  sessions now end after real inactivity.
 
 ## 2026-11-21 (image `2026.11.21-0806`)
 
