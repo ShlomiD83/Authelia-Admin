@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-21 (image `2026.11.21-0715`)
+
 ### Added
 - **Smoke test before publishing**: each platform image is started with sample data and checked
   (`tests/smoke-test.sh`: sign-in, every page, validation, saving configuration and users, passwords,
