@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-21 (image `2026.11.21-0610`)
+
 ### Changed
 - Saving a user, or setting a user's password, returns to the Users list (with a message naming the
   user). A rejected password keeps you on the user's page to try again.
