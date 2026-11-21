@@ -49,7 +49,7 @@ Runs as a single container with a distroless runtime image and no pinned Autheli
 **Backups**
 - Automatic timestamped backup on every save, restore and delete, grouped by category (Configuration, Users, Database)
 - "Back up database now": consistent online SQLite backup, with download and delete
-- **Automatic daily database backup** (default 03:00, keeping the last 7; `DB_BACKUP_TIME`, `DB_BACKUP_KEEP`), with a catch-up run after downtime
+- **Automatic daily database backup** (default 03:00, keeping the last 7), with a catch-up run after downtime; time, on/off and how many to keep can be changed on the Backups page (or with `DB_BACKUP_TIME` / `DB_BACKUP_KEEP`)
 - Backup view shows exactly what a restore would change; old backups are pruned (`MAX_BACKUPS`)
 - **Export and import**: download `configuration.yml`, `users_database.yml`, the database (a consistent copy), the admin passkeys and the admin log as one zip (optionally with the backups folder), and import chosen parts from such a zip; the configuration is validated first and every replaced file is backed up
 
@@ -137,8 +137,8 @@ One of `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` or `ADMIN_PASSWORD_HASH_FILE` is 
 | `AUTHELIA_USERS_FILE` | `users_database.yml` | Users file name, relative to the config dir. |
 | `AUTHELIA_DB_FILE` | `<config dir>/db.sqlite3` | SQLite file, used only if `storage.local.path` is not set in the configuration. |
 | `MAX_BACKUPS` | `30` | Backups kept per file (configuration and users); older ones are deleted. |
-| `DB_BACKUP_TIME` | `03:00` | Time of the automatic daily database backup, in `TZ`; `off` turns it off. If the container was down at that time and the last database backup is over a day old, one runs shortly after start. |
-| `DB_BACKUP_KEEP` | `7` | Database backups kept (automatic and manual together); older ones are deleted. |
+| `DB_BACKUP_TIME` | `03:00` | Time of the automatic daily database backup, in `TZ`; `off` turns it off. If the container was down at that time and the last database backup is over a day old, one runs shortly after start. A schedule saved on the Backups page takes precedence. |
+| `DB_BACKUP_KEEP` | `7` | Database backups kept (automatic and manual together); older ones are deleted. A value saved on the Backups page takes precedence. |
 | `ACTIVITY_DAYS` | `30` | How many days back the Activity page shows sign-ins and admin actions. |
 | `AUDIT_LOG_FILE` | `/config/admin_audit.log` | Where the admin action log is written (JSON lines, about 1 MB plus one older `.1` file). |
 

@@ -6,7 +6,11 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **Backup schedule on the Backups page**: turn the automatic database backup on or off, set its time and
+  how many to keep. Saved in `admin_settings.json` in the Authelia folder; it takes precedence over
+  `DB_BACKUP_TIME` / `DB_BACKUP_KEEP`, and **Reset to compose settings** goes back to them. Changes apply
+  without a restart and are recorded in the admin log. The settings file is included in exports.
 
 ## 2026-11-21 (image `2026.11.21-1131`)
 

@@ -1508,10 +1508,46 @@ def backups():
         by_cat[backup_category(n)].append({"name": n, "size": os.path.getsize(f), "db": is_db_backup(n)})
     groups = [{"key": k, "title": t, "hint": h, "items": by_cat[k]}
               for k, t, h in BACKUP_GROUPS if by_cat[k] or k != "other"]
+    at, keep, source = db_backup_schedule()
     return render_template("backups.html", groups=groups, page="backups", db_file=db_path(),
                            imported=bool(request.args.get("imported")),
-                           db_exists=os.path.isfile(db_path()), db_auto=DB_BACKUP_AT, db_keep=DB_BACKUP_KEEP,
+                           db_exists=os.path.isfile(db_path()), db_auto=at, db_keep=keep, db_source=source,
+                           db_time_value="%02d:%02d" % (at or ENV_DB_BACKUP_AT or (3, 0)),
                            db_next=next_db_backup(), db_last=latest_db_backup_time(), db_state=db_backup_state)
+
+
+@app.route("/backups/schedule", methods=["POST"])
+@login_required
+def backup_schedule():
+    """Save the automatic database backup schedule (overrides DB_BACKUP_TIME / DB_BACKUP_KEEP)."""
+    if request.form.get("reset"):
+        data = load_settings()
+        data.pop("db_backup", None)
+        save_settings(data)
+        at, keep, _ = db_backup_schedule()
+        audit("Backup schedule reset", "database", "back to the compose settings")
+        flash("Backup schedule reset to the settings in the compose file.", "ok")
+        return redirect(url_for("backups"))
+    enabled = request.form.get("enabled") == "on"
+    at = _parse_time(request.form.get("time"))
+    try:
+        keep = int(request.form.get("keep", ""))
+    except ValueError:
+        keep = 0
+    if enabled and not at:
+        flash("Enter the time as HH:MM, for example 03:00.", "error")
+        return redirect(url_for("backups"))
+    if not 1 <= keep <= 100:
+        flash("Keep between 1 and 100 database backups.", "error")
+        return redirect(url_for("backups"))
+    data = load_settings()
+    data["db_backup"] = {"time": "%02d:%02d" % at if enabled else "off", "keep": keep}
+    save_settings(data)
+    detail = (f"daily at {data['db_backup']['time']}" if enabled else "automatic off") + f", keep {keep}"
+    audit("Backup schedule changed", "database", detail)
+    flash("Backup schedule saved: " + (f"daily at {data['db_backup']['time']}" if enabled
+                                       else "automatic backups off") + f", keeping the last {keep}.", "ok")
+    return redirect(url_for("backups"))
 
 
 @app.route("/backups/new-db", methods=["POST"])
@@ -1532,7 +1568,7 @@ def backup_db():
 
 
 def make_db_backup():
-    """Back up Authelia's SQLite database into the backups folder; keeps the newest DB_BACKUP_KEEP.
+    """Back up Authelia's SQLite database into the backups folder; keeps the newest N (the backup schedule).
     Returns (path, method). Raises on failure (nothing half-written is left behind)."""
     src = db_path()
     if not os.path.isfile(src):
@@ -1559,24 +1595,68 @@ def make_db_backup():
         if os.path.exists(dest):
             os.remove(dest)
         raise
-    for old in sorted(glob.glob(os.path.join(BACKUP_DIR, base + ".*")))[:-DB_BACKUP_KEEP]:
+    for old in sorted(glob.glob(os.path.join(BACKUP_DIR, base + ".*")))[:-db_backup_schedule()[1]]:
         os.remove(old)
     return dest, method
 
 
 # ---- automatic daily database backup ----
-# DB_BACKUP_TIME: HH:MM in TZ (default 03:00), or "off". DB_BACKUP_KEEP: database backups kept (default 7).
-_dbt = os.environ.get("DB_BACKUP_TIME", "03:00").strip().lower()
-_m = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", _dbt)
-DB_BACKUP_AT = (int(_m.group(1)), int(_m.group(2))) if _m else None
-if _dbt not in ("off", "false", "") and not _m:
-    print(f"WARNING: invalid DB_BACKUP_TIME {_dbt!r} (use HH:MM or off); automatic database backups are off",
+# Defaults from DB_BACKUP_TIME (HH:MM in TZ, default 03:00, or "off") and DB_BACKUP_KEEP (default 7);
+# a schedule saved on the Backups page (admin_settings.json in the Authelia folder) takes precedence.
+SETTINGS_FILE = os.environ.get("ADMIN_SETTINGS_FILE") or os.path.join(CONFIG_DIR, "admin_settings.json")
+_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def _parse_time(value):
+    m = _TIME_RE.match(str(value or "").strip())
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+_env_time = os.environ.get("DB_BACKUP_TIME", "03:00").strip().lower()
+ENV_DB_BACKUP_AT = _parse_time(_env_time)
+if _env_time not in ("off", "false", "") and not ENV_DB_BACKUP_AT:
+    print(f"WARNING: invalid DB_BACKUP_TIME {_env_time!r} (use HH:MM or off); automatic database backups are off",
           flush=True)
 try:
-    DB_BACKUP_KEEP = max(1, int(os.environ.get("DB_BACKUP_KEEP", "7")))
+    ENV_DB_BACKUP_KEEP = max(1, int(os.environ.get("DB_BACKUP_KEEP", "7")))
 except ValueError:
-    DB_BACKUP_KEEP = 7
+    ENV_DB_BACKUP_KEEP = 7
 db_backup_state = {"last": None, "error": None}   # last automatic run (datetime) / last error message
+
+
+def load_settings():
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(data):
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(SETTINGS_FILE) or ".", prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+        os.replace(tmp, SETTINGS_FILE)
+    except Exception:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
+def db_backup_schedule():
+    """(time (h, m) or None when off, number kept, where it comes from: 'page' or 'env')."""
+    s = load_settings().get("db_backup")
+    if isinstance(s, dict):
+        at = None if s.get("time") == "off" else _parse_time(s.get("time"))
+        try:
+            keep = max(1, min(100, int(s.get("keep", ENV_DB_BACKUP_KEEP))))
+        except (TypeError, ValueError):
+            keep = ENV_DB_BACKUP_KEEP
+        if at or s.get("time") == "off":
+            return at, keep, "page"
+    return ENV_DB_BACKUP_AT, ENV_DB_BACKUP_KEEP, "env"
 
 
 def latest_db_backup_time():
@@ -1587,10 +1667,11 @@ def latest_db_backup_time():
 
 
 def next_db_backup():
-    if not DB_BACKUP_AT:
+    at = db_backup_schedule()[0]
+    if not at:
         return None
     n = now()
-    t = n.replace(hour=DB_BACKUP_AT[0], minute=DB_BACKUP_AT[1], second=0, microsecond=0)
+    t = n.replace(hour=at[0], minute=at[1], second=0, microsecond=0)
     return t if t > n else t + timedelta(days=1)
 
 
@@ -1608,28 +1689,35 @@ def _run_db_backup():
 
 
 def _db_backup_loop():
+    """Re-reads the schedule every 20 seconds, so a change on the Backups page applies right away."""
     time.sleep(120)   # let the app start first
-    # catch up after downtime: the last database backup is more than a day old
+    # catch up after downtime: automatic backups are on and the last database backup is over a day old
     last = latest_db_backup_time()
-    if last is None or now() - last > timedelta(hours=25):
+    if db_backup_schedule()[0] and (last is None or now() - last > timedelta(hours=25)):
         _run_db_backup()
+    done_for = None
     while True:
-        target = next_db_backup()
-        while now() < target:   # short steps, so clock changes or a suspended host don't throw it off
-            time.sleep(min(60.0, max(1.0, (target - now()).total_seconds())))
-        _run_db_backup()
-        time.sleep(61)   # never twice for the same minute
+        time.sleep(20)
+        at = db_backup_schedule()[0]
+        if not at:
+            continue
+        n = now()
+        slot = n.replace(hour=at[0], minute=at[1], second=0, microsecond=0)
+        # within 5 minutes after the scheduled time (a busy or briefly suspended host may wake up late)
+        if timedelta(0) <= n - slot < timedelta(minutes=5) and done_for != slot:
+            done_for = slot
+            _run_db_backup()
 
 
-if DB_BACKUP_AT:
-    threading.Thread(target=_db_backup_loop, name="db-backup", daemon=True).start()
+threading.Thread(target=_db_backup_loop, name="db-backup", daemon=True).start()
 
 
 # ---------- export / import of the whole Authelia folder ----------
 def export_parts():
     """(name in the zip, path on disk) for everything an export contains, if it exists."""
     parts = [(os.path.basename(CONFIG_FILE), CONFIG_FILE), (os.path.basename(USERS_FILE), USERS_FILE),
-             (os.path.basename(PASSKEY_FILE), PASSKEY_FILE), (os.path.basename(AUDIT_FILE), AUDIT_FILE),
+             (os.path.basename(PASSKEY_FILE), PASSKEY_FILE), (os.path.basename(SETTINGS_FILE), SETTINGS_FILE),
+             (os.path.basename(AUDIT_FILE), AUDIT_FILE),
              (os.path.basename(AUDIT_FILE) + ".1", AUDIT_FILE + ".1")]
     return [(n, p) for n, p in parts if os.path.isfile(p)]
 

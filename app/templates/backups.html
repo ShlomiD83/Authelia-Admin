@@ -50,8 +50,18 @@
   <p style="margin:.75rem 0 0">
     {% if db_auto %}<span class="tag ok">automatic</span> Daily at {{ '%02d:%02d'|format(db_auto[0], db_auto[1]) }} ({{ tzname }}), keeping the last {{ db_keep }} database backups.
     Next: {{ db_next|when|lower }}.{% if db_last %} Latest: {{ db_last|when|lower }}.{% endif %}
-    {% else %}<span class="tag mut">automatic off</span> Set <code>DB_BACKUP_TIME</code> (for example <code>03:00</code>) to back up the database daily.{% endif %}
+    {% else %}<span class="tag mut">automatic off</span> Keeping the last {{ db_keep }} database backups.{% if db_last %} Latest: {{ db_last|when|lower }}.{% endif %}{% endif %}
   </p>
+  <form method="post" action="{{ url_for('backup_schedule') }}" class="sched">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label class="sched-on"><input type="checkbox" name="enabled" {{ 'checked' if db_auto }}> Automatic daily backup at</label>
+    <input type="time" name="time" value="{{ db_time_value }}" aria-label="Backup time" step="60">
+    <label for="sched-keep">keep the last</label>
+    <input type="number" id="sched-keep" name="keep" value="{{ db_keep }}" min="1" max="100" aria-label="Database backups to keep">
+    <button class="btn">Save schedule</button>
+    {% if db_source == 'page' %}<button class="btn amber" name="reset" value="1" title="Use DB_BACKUP_TIME / DB_BACKUP_KEEP from the compose file again">Reset to compose settings</button>{% endif %}
+  </form>
+  <p style="color:var(--mut);margin:.4rem 0 0;font-size:.85rem">{% if db_source == 'page' %}Set on this page (saved in the Authelia folder as <code>admin_settings.json</code>); it overrides <code>DB_BACKUP_TIME</code> and <code>DB_BACKUP_KEEP</code>.{% else %}From the compose file (<code>DB_BACKUP_TIME</code>, <code>DB_BACKUP_KEEP</code>, or their defaults). Saving here overrides them.{% endif %} Changes apply right away.</p>
   {% if db_state.error %}<div class="flash error" style="margin-top:.6rem">The last automatic database backup failed: {{ db_state.error }}</div>{% endif %}
   <p style="color:var(--mut);margin:.75rem 0 0">Database backups contain 2FA secrets (encrypted with your storage encryption key; keep that key separately). To restore: stop Authelia, download the backup, and replace the database file with it.</p>
 </div>
