@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-21 (image `2026.11.21-1131`)
+
 ### Changed
 - The Import button on the Backups page has the same colour as the other main buttons.
 
