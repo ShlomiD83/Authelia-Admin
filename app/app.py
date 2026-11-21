@@ -819,6 +819,39 @@ def authelia_version():
     return _authelia_version or ""
 
 
+# Newest Authelia release on GitHub, to tell when the image's built-in Authelia CLI (used for validation and
+# the editor's schema) is behind. Cached for 6 hours (1 hour after a failure). UPDATE_CHECK=false turns it off.
+UPDATE_CHECK = os.environ.get("UPDATE_CHECK", "true").lower() != "false"
+_release_cache = {"at": 0.0, "version": None}
+
+
+def latest_authelia_release():
+    if not UPDATE_CHECK:
+        return None
+    age = time.time() - _release_cache["at"]
+    if age < (6 * 3600 if _release_cache["version"] else 3600) and _release_cache["at"]:
+        return _release_cache["version"]
+    import urllib.request
+    version = None
+    try:
+        req = urllib.request.Request("https://api.github.com/repos/authelia/authelia/releases/latest",
+                                     headers={"Accept": "application/vnd.github+json",
+                                              "User-Agent": "authelia-admin-update-check"})
+        with urllib.request.urlopen(req, timeout=4) as r:
+            tag = json.load(r).get("tag_name", "")
+        m = re.match(r"v?(\d+\.\d+\.\d+)$", tag)
+        version = "v" + m.group(1) if m else None
+    except Exception:
+        version = None   # offline or rate-limited: no notice, try again later
+    _release_cache.update(at=time.time(), version=version)
+    return version
+
+
+def version_tuple(v):
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)", v or "")
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
 @app.route("/dashboard/status")
 @login_required
 def dashboard_status():
@@ -834,8 +867,10 @@ def dashboard_status():
         _validation_cache.clear()
         _validation_cache[fp] = (ok, problems)
     ok, problems = _validation_cache[fp]
+    built, latest = authelia_version(), latest_authelia_release()
+    update = bool(version_tuple(built) and version_tuple(latest) and version_tuple(latest) > version_tuple(built))
     resp = jsonify(authelia=authelia_health(), config_ok=ok, config_problems=problems,
-                   version=authelia_version(), checked=now().strftime("%H:%M"))
+                   version=built, latest=latest, update=update, checked=now().strftime("%H:%M"))
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -1343,6 +1378,23 @@ def restart_status():
     resp = jsonify(flag=flag, authelia=health, container=AUTHELIA_CONTAINER or "authelia")
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@app.route("/restart/withdraw", methods=["POST"])
+@login_required
+def restart_withdraw():
+    """Remove a restart request the host service didn't pick up, so it can't restart Authelia later by
+    surprise (for example when the service is fixed hours afterwards)."""
+    if not RESTART_FLAG_FILE:
+        return jsonify(ok=False, error="Flag-file restart isn't configured."), 404
+    try:
+        os.remove(RESTART_FLAG_FILE)
+        removed = True
+    except FileNotFoundError:
+        removed = False   # picked up in the meantime
+    if removed:
+        audit("Restart request withdrawn", "Authelia", "not picked up by the host service")
+    return jsonify(ok=True, withdrawn=removed)
 
 
 # ---------- backups ----------

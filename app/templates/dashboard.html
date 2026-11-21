@@ -14,6 +14,8 @@
     <p class="dbig"><span class="tag mut">not checked</span></p>
     <p class="dsub">Set <code>AUTHELIA_URL</code> to see whether Authelia is up.</p>
     {% endif %}
+    <p class="dsub" id="dash-version" hidden></p>
+    <p class="dsub dupdate" id="dash-update" hidden></p>
     {% if can_restart %}
     <form method="post" action="{{ url_for('restart') }}" data-confirm="Restart the Authelia container?">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="btn sec dbtn">{{ ic('refresh') }}Restart</button>

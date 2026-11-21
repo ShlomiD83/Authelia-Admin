@@ -12,3 +12,4 @@ backups
 **/*.pyc
 editor/node_modules
 editor/dist
+tests

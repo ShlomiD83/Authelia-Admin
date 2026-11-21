@@ -6,7 +6,21 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Added
+- **Smoke test before publishing**: each platform image is started with sample data and checked
+  (`tests/smoke-test.sh`: sign-in, every page, validation, saving configuration and users, passwords,
+  backups, admin log). Nothing is pushed if a check fails; Dependabot updates are merged only if it passes.
+- **Automatic cleanup** after each build: only the images behind the newest 5 tags are kept. On GHCR,
+  untagged leftovers are removed too. Docker Hub cleanup needs a `DOCKERHUB_CLEANUP_TOKEN` secret.
+- **Authelia update notice** on the dashboard: the Authelia card shows "up to date" while the Authelia
+  used for config checks (built into the admin image) is the latest release, and a notice to pull a new
+  admin image when a newer release is out (`UPDATE_CHECK=false` turns the check off).
+- The built-in Authelia CLI now reports its real version (`authelia --version` shows e.g.
+  `v4.39.28-dirty`) instead of "untagged-unknown".
+
+### Changed
+- A restart request the host service doesn't pick up within 20 seconds is withdrawn, so Authelia can't
+  restart later by surprise (for example once the service is fixed); the withdrawal is logged.
 
 ## 2026-11-21 (image `2026.11.21-0617`)
 

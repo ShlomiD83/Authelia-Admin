@@ -1,7 +1,7 @@
 name: Dependabot auto-merge
 
 # For Dependabot pull requests with PATCH or MINOR updates:
-#   1. build the image once (amd64, not pushed) to check it still builds and its startup checks pass
+#   1. build the image once (amd64, not pushed) and run the smoke test (tests/smoke-test.sh)
 #   2. merge the pull request
 #   3. for Python and editor (npm) package updates, start the image workflow so the update reaches Docker Hub
 # MAJOR updates (for example gunicorn 26 -> 27) are left open, labelled `major-update`, and the repository
@@ -37,7 +37,14 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          provenance: false
+          tags: authelia-admin:test
           cache-from: type=gha,scope=linux-amd64
+
+      # The update is merged only if the app still works with it
+      - name: Smoke test
+        run: bash tests/smoke-test.sh authelia-admin:test
 
   merge:
     name: Merge and publish

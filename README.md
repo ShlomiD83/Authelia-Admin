@@ -157,7 +157,8 @@ Passkeys are enabled when both `ADMIN_RP_ID` and `ADMIN_ORIGIN` are set.
 |---|---|---|
 | `RESTART_FLAG_FILE` | – | Enables the Restart button in flag-file mode (recommended): the button creates this file, for example `/config/.restart-request`, and a host service restarts Authelia. |
 | `AUTHELIA_CONTAINER` | – | Name of the Authelia container. Enables the Restart button in Docker-socket mode. If both are set, the flag file is used. |
-| `AUTHELIA_URL` | – | Authelia's address as this container reaches it, for example `http://authelia:9091` (same Docker network) or `http://192.168.1.10:9091`. After a restart the page checks Authelia's `/api/health` and reports when it is back up, or that it didn't come back. Without it, the page only confirms that the host picked up the restart request. |
+| `AUTHELIA_URL` | – | Authelia's address as this container reaches it, for example `http://authelia:9091` (same Docker network) or `http://192.168.1.10:9091`. After a restart the page checks Authelia's `/api/health` and reports when it is back up, or that it didn't come back. Without it, the page only confirms that the host picked up the restart request. A request the host doesn't pick up within 20 seconds is withdrawn, so Authelia can't restart later by surprise. |
+| `UPDATE_CHECK` | `true` | The dashboard asks GitHub (at most every 6 hours, no personal data) for Authelia's latest release and says when it's newer than the Authelia built into this image, so you know to pull a new admin image. `false` turns it off. |
 
 ### Reverse proxy
 
@@ -293,7 +294,11 @@ You can also start it from the Actions tab, with an option to force a rebuild.
 
 Python packages are pinned in `requirements.txt`, and the editor's packages (CodeMirror, esbuild) in `editor/package-lock.json`. Dependabot (`.github/dependabot.yml`) opens weekly pull requests for them and for the GitHub Actions versions. For **patch and minor** updates, `.github/workflows/dependabot-automerge.yml` builds the image once as a check, merges the pull request, and (for Python and editor updates) publishes a new image. **Major** updates stay open for you to review.
 
-Every build overwrites only `latest`; it also gets its own permanent tag with the build date and time in UTC, for example `romekd/authelia-admin:2026.11.18-1408`, which is never overwritten. The project has no automated tests, so an update that breaks the app could be published; to control when your server updates, use a date tag instead of `latest` and move it forward after checking the new image.
+Every build overwrites only `latest`; it also gets its own tag with the build date and time in UTC, for example `romekd/authelia-admin:2026.11.18-1408`, which is never overwritten. To control when your server updates, use a date tag instead of `latest` and move it forward after checking the new image.
+
+**Smoke test.** Before anything is published, each platform image is started with the sample data in `tests/fixtures` and checked by `tests/smoke-test.sh`: sign-in, every page, validation with the built-in Authelia CLI, saving the configuration and a user, setting a password, backups and the admin log. If any check fails, nothing is pushed. Dependabot updates are merged only if the same test passes. Run it locally with `bash tests/smoke-test.sh <image>` (needs Docker, curl and openssl; works in Git Bash on Windows).
+
+**Cleanup.** After each build, only the images behind the newest 5 tags are kept (`latest` is always the newest); older ones are deleted. On GHCR, untagged leftovers are removed too, safely for multi-arch images. Docker Hub cleanup needs a Docker Hub access token with **Read, Write & Delete** scope in a repository secret named `DOCKERHUB_CLEANUP_TOKEN` (the build token only needs Read & Write); without it, that step is skipped. Untagged images on Docker Hub aren't removed (public repositories aren't charged for storage).
 
 GitHub pauses scheduled workflows in repositories with no activity for 60 days (it emails you first); re-enable it from the Actions tab if that happens.
 

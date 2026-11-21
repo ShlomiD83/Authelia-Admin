@@ -17,11 +17,19 @@ RUN set -eux; \
     echo "Building Authelia ${TAG}"; \
     git clone --depth 1 --branch "${TAG}" https://github.com/authelia/authelia /src
 WORKDIR /src
+# The version stamps are the same ones Authelia's own build sets (shown by `authelia --version`), so the admin
+# app can tell which release is built in. "dirty": some Go dependencies are updated on top of the release.
 RUN set -eux; \
     go mod edit -dropreplace=golang.org/x/net; \
     go get golang.org/x/net@latest github.com/klauspost/compress@latest golang.org/x/crypto@master; \
     go mod tidy; \
-    CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o /out/authelia ./cmd/authelia
+    TAG="$(git describe --tags --exact-match)"; \
+    COMMIT="$(git rev-parse HEAD)"; \
+    P="github.com/authelia/authelia/v4/internal/utils"; \
+    CGO_ENABLED=1 go build -trimpath -o /out/authelia \
+      -ldflags "-s -w -X ${P}.BuildTag=${TAG} -X ${P}.BuildBranch=${TAG} -X ${P}.BuildCommit=${COMMIT} -X '${P}.BuildState=tagged dirty' -X ${P}.BuildNumber=0 -X ${P}.BuildExtra=authelia-admin" \
+      ./cmd/authelia; \
+    /out/authelia --version
 # Authelia's JSON schema for configuration.yml, from the same release, for the editor's autocomplete,
 # hover docs and live checks.
 RUN set -eux; \

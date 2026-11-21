@@ -1,0 +1,32 @@
+# Sample configuration for the smoke test (tests/smoke-test.sh). All secrets are fake test values.
+---
+theme: auto
+server:
+  address: 'tcp://:9091'
+log:
+  level: info
+identity_validation:
+  reset_password:
+    jwt_secret: 'smoke_test_jwt_secret_0123456789abcdef0123456789abcdef'
+authentication_backend:
+  password_reset:
+    disable: true
+  file:
+    path: /config/users_database.yml
+access_control:
+  default_policy: deny
+  rules:
+    - domain: 'app.example.com'
+      policy: one_factor
+session:
+  secret: 'smoke_test_session_secret_0123456789abcdef0123456789abc'
+  cookies:
+    - domain: example.com
+      authelia_url: 'https://auth.example.com'
+storage:
+  encryption_key: 'smoke_test_storage_key_0123456789abcdef0123456789abcdef'
+  local:
+    path: /config/db.sqlite3
+notifier:
+  filesystem:
+    filename: /config/notification.txt

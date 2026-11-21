@@ -1,0 +1,16 @@
+# Sample users for the smoke test (tests/smoke-test.sh). Password for both: smoke-test-user-pw
+users:
+  alice:
+    disabled: false
+    displayname: Alice Example
+    email: alice@example.com
+    groups:
+      - admins
+    password: '$argon2id$v=19$m=65536,t=3,p=4$VBU+XppFfMoEQKgaOhTkNg$cQf3RDl1fMrwdVI2JikXqhifdFEoWrCTskg7N1UMe90'
+  bob:
+    disabled: false
+    displayname: Bob Example
+    email: bob@example.com
+    groups:
+      - family
+    password: '$argon2id$v=19$m=65536,t=3,p=4$c+GNZ/GWqFKTgcDs8zXmIQ$oJPB9m1iQE51bSlgSLLO5ka4cD9rs6RT4NuCuiHMTrA'

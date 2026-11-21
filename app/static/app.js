@@ -205,7 +205,22 @@ document.addEventListener("click", function (e) {
         .then(function (s) {
           if (mode === "flag" && !pickedAt) {
             if (s.flag === "pending") {
-              if (secs(start) >= 20) finish("error", "The restart request wasn't picked up after 20 seconds. Check on the host that the authelia-restart.path unit is enabled and running (systemctl status authelia-restart.path).");
+              if (secs(start) >= 20) {
+                done = true;   // stop polling while the request is withdrawn
+                var csrfEl = document.querySelector('input[name="csrf"]');
+                fetch("/restart/withdraw", {
+                  method: "POST", credentials: "same-origin",
+                  headers: { "X-CSRF-Token": csrfEl ? csrfEl.value : "" }
+                }).then(function (r) { return r.json(); }).then(function (j) {
+                  if (j.ok && j.withdrawn === false) {   // the host took it at the last moment: keep watching
+                    done = false; pickedAt = Date.now(); setTimeout(poll, 400);
+                    return;
+                  }
+                  finish("error", "The restart request wasn't picked up after 20 seconds, so it was withdrawn (Authelia won't restart later by surprise). Check on the host that the authelia-restart.path unit is enabled and running: systemctl status authelia-restart.path");
+                }).catch(function () {
+                  finish("error", "The restart request wasn't picked up after 20 seconds. Check on the host that the authelia-restart.path unit is enabled and running: systemctl status authelia-restart.path");
+                });
+              }
               return;
             }
             pickedAt = Date.now();
@@ -266,6 +281,25 @@ document.addEventListener("DOMContentLoaded", function () {
         else set("dash-config", "mut", "not checked");
         var cfg = document.getElementById("dash-config");
         if (cfg && s.version) cfg.title = "Checked with Authelia " + s.version;
+        // "up to date" in green while the built-in Authelia (used for config checks) is the latest release;
+        // a notice only when a newer release is out; nothing when it can't be checked
+        var ver = document.getElementById("dash-version");
+        if (ver) {
+          ver.hidden = !(s.version && s.latest && !s.update);
+          ver.textContent = "";
+          if (!ver.hidden) {
+            var tag = document.createElement("span");
+            tag.className = "tag ok";
+            tag.textContent = "up to date";
+            tag.title = "Config checks use Authelia " + s.version + ", the latest release";
+            ver.appendChild(tag);
+          }
+        }
+        var upd = document.getElementById("dash-update");
+        if (upd) {
+          upd.hidden = !s.update;
+          if (s.update) upd.textContent = "Authelia " + s.latest + " is out, but config checks here still use " + s.version + ". Pull the latest admin image (or rebuild it) to update them.";
+        }
       })
       .catch(function () {
         set("dash-authelia", "mut", "unknown");
