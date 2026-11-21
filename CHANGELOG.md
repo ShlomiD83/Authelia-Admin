@@ -7,6 +7,11 @@ entries are headed by date. Changes not yet in a published image are listed unde
 ## Unreleased
 
 ### Changed
+- The Import button on the Backups page has the same colour as the other main buttons.
+
+## 2026-11-21 (image `2026.11.21-1114`)
+
+### Changed
 - After a successful import, the Backups page asks whether to restart Authelia now (as after saving the
   configuration), when the import changed something Authelia uses (configuration, users or database).
 
