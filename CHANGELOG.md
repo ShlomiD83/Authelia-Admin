@@ -6,7 +6,9 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- After a successful import, the Backups page asks whether to restart Authelia now (as after saving the
+  configuration), when the import changed something Authelia uses (configuration, users or database).
 
 ## 2026-11-21 (image `2026.11.21-1108`)
 

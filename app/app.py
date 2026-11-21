@@ -1509,6 +1509,7 @@ def backups():
     groups = [{"key": k, "title": t, "hint": h, "items": by_cat[k]}
               for k, t, h in BACKUP_GROUPS if by_cat[k] or k != "other"]
     return render_template("backups.html", groups=groups, page="backups", db_file=db_path(),
+                           imported=bool(request.args.get("imported")),
                            db_exists=os.path.isfile(db_path()), db_auto=DB_BACKUP_AT, db_keep=DB_BACKUP_KEEP,
                            db_next=next_db_backup(), db_last=latest_db_backup_time(), db_state=db_backup_state)
 
@@ -1781,8 +1782,10 @@ def import_zip():
         done.append(IMPORT_KINDS["db"])
     audit("Imported", up.filename[:100], ", ".join(done) + ("; validation skipped" if force else ""))
     note = " Not in the zip: " + ", ".join(missing) + "." if missing else ""
-    flash("Imported " + ", ".join(done) + " (the previous versions were backed up). Restart Authelia to apply."
-          + note, "ok")
+    flash("Imported " + ", ".join(done) + " (the previous versions were backed up)." + note, "ok")
+    # Authelia only needs a restart for what it reads: configuration, users, database (not the admin passkeys)
+    if {"config", "users", "db"} & set(data):
+        return redirect(url_for("backups", imported=1))
     return back
 
 

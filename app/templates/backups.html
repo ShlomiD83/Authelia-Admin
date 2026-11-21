@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block body %}
+{% if imported %}
+<div class="card" style="border-color:var(--pri)">
+  <h2>Import complete</h2>
+  {% if can_restart %}
+  <p style="margin:0 0 .5rem">Restart Authelia now to apply the imported files?</p>
+  <div class="row" style="margin-top:.5rem">
+    <form method="post" action="{{ url_for('restart') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="btn">Restart Authelia now</button>
+    </form>
+    <a class="btn sec" href="{{ url_for('backups') }}">Not now</a>
+  </div>
+  {% else %}
+  <p style="margin:0">Restart Authelia to apply the imported files.</p>
+  {% endif %}
+</div>
+{% endif %}
 <div class="card">
   <h2>Export and import</h2>
   <p style="color:var(--mut);margin:0 0 .6rem">Everything in one zip: <code>configuration.yml</code>, <code>users_database.yml</code>, the database (a consistent copy, safe while Authelia runs), the admin passkeys and the admin log. Use it to move to another server or to keep a copy elsewhere. It contains secrets and password hashes: store it safely.</p>
