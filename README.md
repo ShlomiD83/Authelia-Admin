@@ -219,14 +219,14 @@ To turn it off, remove the variable and recreate the container.
 
 **Flag file (recommended, no Docker access for the container).** The button creates a request file in your Authelia folder, and a systemd unit on the host restarts the Authelia container when it appears.
 
-The easy way: run the install script on the Docker host, with your Authelia folder (the one mounted as `/config`) and the Authelia container's name:
+The easy way: run the install script on the Docker host, with your Authelia folder (the one mounted as `/config`):
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/ShlomiD83/Authelia-Admin/main/scripts/install-restart-service.sh
-sudo bash install-restart-service.sh --folder /path/to/authelia --container authelia
+sudo bash install-restart-service.sh --folder /path/to/authelia
 ```
 
-It creates, enables and starts the units below, checks the folder, container and systemd first, and removes an old unanswered request so nothing restarts by surprise. `--dry-run` shows what it would write without changing anything; `--uninstall` removes it. Then set `RESTART_FLAG_FILE: /config/.restart-request` in the admin container's compose file and recreate it.
+It finds the Authelia container by itself (the container made from the `authelia/authelia` image); if you run several, it lists them and you pick one with `--container <name>`. It creates, enables and starts the units below, checks the folder, container and systemd first, and removes an old unanswered request so nothing restarts by surprise. `--dry-run` shows what it would write without changing anything; `--uninstall` removes it. Then set `RESTART_FLAG_FILE: /config/.restart-request` in the admin container's compose file and recreate it.
 
 Or by hand: set `RESTART_FLAG_FILE: /config/.restart-request` and create a systemd path unit that reacts to the file (adjust the path to your Authelia folder and the container name):
 

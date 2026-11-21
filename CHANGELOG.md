@@ -10,7 +10,8 @@ entries are headed by date. Changes not yet in a published image are listed unde
 - `scripts/install-restart-service.sh`: sets up the host side of the Restart button (flag-file mode) in
   one command. It creates, enables and starts the systemd path and service units for your Authelia folder
   and container, checks the prerequisites first, removes an old unanswered request, and supports
-  `--dry-run` and `--uninstall`.
+  `--dry-run` and `--uninstall`. It finds the Authelia container by itself (made from the
+  `authelia/authelia` image); with several, it lists them and asks for `--container`.
 - A screenshot of the Backups page in the README.
 
 ## 2026-11-21 (image `2026.11.21-1850`)

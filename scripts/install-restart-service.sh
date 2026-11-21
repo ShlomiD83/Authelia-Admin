@@ -8,13 +8,14 @@
 #   sudo ./install-restart-service.sh --uninstall
 #
 # --folder     the Authelia folder on the host, the one mounted as /config in both containers (required)
-# --container  name of the Authelia container (default: authelia)
+# --container  name of the Authelia container (default: found automatically, the one container made from the
+#              authelia/authelia image; if there are several, the script lists them and asks you to choose)
 # --flag       file name of the request inside that folder (default: .restart-request)
 #
 # Afterwards, set in the admin container's compose file:  RESTART_FLAG_FILE: /config/<flag>
 set -euo pipefail
 
-FOLDER="" CONTAINER="authelia" FLAG=".restart-request" DRY=0 UNINSTALL=0
+FOLDER="" CONTAINER="" FLAG=".restart-request" DRY=0 UNINSTALL=0
 UNIT_DIR="/etc/systemd/system"
 NAME="authelia-restart"
 
@@ -53,17 +54,38 @@ case "$FOLDER" in /*) ;; *) die "--folder must be an absolute path, for example 
 # systemd unit values: keep to plain path characters, so nothing needs escaping
 [[ "$FOLDER" =~ ^[A-Za-z0-9/._-]+$ ]] || die "the folder path may only contain letters, digits, / . _ - (no spaces)."
 [[ "$FLAG" =~ ^[A-Za-z0-9._-]+$ ]]    || die "--flag must be a plain file name, for example .restart-request"
-[[ "$CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "--container doesn't look like a container name."
 [ -d "$FOLDER" ] || die "$FOLDER doesn't exist."
 
 DOCKER="$(command -v docker || true)"
 [ -n "$DOCKER" ] || die "docker isn't installed or not on PATH."
-if [ "$DRY" -eq 0 ]; then
-  need_root
-  command -v systemctl >/dev/null || die "this system doesn't use systemd (systemctl not found)."
-  if ! "$DOCKER" inspect --type container "$CONTAINER" >/dev/null 2>&1; then
-    echo "Warning: no container named '$CONTAINER' right now. The service will try to restart that name; check it with: docker ps" >&2
+[ "$DRY" -eq 1 ] || need_root
+
+# ---- which container to restart ----
+if [ -z "$CONTAINER" ]; then
+  # containers made from the official image (any registry or tag), running or stopped;
+  # this deliberately doesn't match the admin image (authelia-admin)
+  found="$("$DOCKER" ps -a --format '{{.Names}}|{{.Image}}|{{.State}}' 2>/dev/null \
+           | awk -F'|' '$2 ~ /(^|\/)authelia\/authelia([:@]|$)/ {print $1 "|" $3}')" \
+    || die "couldn't list containers (is Docker running, and do you have access to it?)."
+  count="$(printf '%s\n' "$found" | grep -c . || true)"
+  if [ "$count" -eq 1 ]; then
+    CONTAINER="${found%%|*}"
+    info "found the Authelia container: $CONTAINER (${found##*|})"
+  elif [ "$count" -eq 0 ]; then
+    die "no container made from the authelia/authelia image was found. Pass its name with --container (see: docker ps)."
+  else
+    echo "Error: several Authelia containers were found; choose one with --container:" >&2
+    printf '%s\n' "$found" | awk -F'|' '{printf "    %s  (%s)\n", $1, $2}' >&2
+    exit 1
   fi
+fi
+[[ "$CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "--container doesn't look like a container name."
+if ! "$DOCKER" inspect --type container "$CONTAINER" >/dev/null 2>&1; then
+  echo "Warning: no container named '$CONTAINER' right now. The service will try to restart that name; check it with: docker ps" >&2
+fi
+
+if [ "$DRY" -eq 0 ]; then
+  command -v systemctl >/dev/null || die "this system doesn't use systemd (systemctl not found)."
 fi
 
 REQUEST="$FOLDER/$FLAG"
