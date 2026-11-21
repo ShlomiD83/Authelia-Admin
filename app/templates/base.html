@@ -114,10 +114,24 @@
   .search .ic { position:absolute; left:.7rem; top:50%; transform:translateY(-50%); color:var(--mut) }
   .search input { padding-left:2.2rem }
   .flash { display:block; padding:.7rem 1rem; border-radius:10px; margin-bottom:1rem; border:1px solid; font-weight:500; line-height:1.55 }
+  .flash { position:relative; transition:opacity .35s ease, transform .35s ease }
+  .flash.leaving { opacity:0; transform:translateY(-4px) }
+  .flash:has(.flash-x) { padding-right:2.6rem }
+  .flash-x { position:absolute; top:.45rem; right:.5rem; width:1.7rem; height:1.7rem; border:0; border-radius:6px; background:transparent; color:var(--fg); font-size:1.25rem; line-height:1; cursor:pointer; opacity:.6 }
+  .flash-x:hover { opacity:1; background:color-mix(in srgb, var(--fg) 10%, transparent) }
   .flash code { font-weight:400; padding:.05rem .35rem; border-radius:5px; background:color-mix(in srgb, var(--fg) 8%, transparent) }
   .flash.ok { background:color-mix(in srgb, var(--ok) 14%, var(--card)); border-color:color-mix(in srgb, var(--ok) 45%, transparent); color:var(--fg) }
   .flash.error { background:color-mix(in srgb, var(--bad) 14%, var(--card)); border-color:color-mix(in srgb, var(--bad) 45%, transparent); color:var(--fg) }
   .flash.wait { display:flex; gap:.6rem; align-items:center; background:color-mix(in srgb, var(--pri) 10%, var(--card)); border-color:color-mix(in srgb, var(--pri) 40%, transparent); color:var(--fg) }
+  /* toasts: one-time messages float over the page (top right; bottom on phones) instead of pushing it down */
+  .toasts { position:fixed; top:1rem; right:1rem; z-index:1000; display:flex; flex-direction:column; gap:.6rem; width:min(380px, calc(100vw - 2rem)); pointer-events:none }
+  .toasts .flash { margin:0; pointer-events:auto; box-shadow:0 8px 24px rgba(0,0,0,.22); animation:toast-in .25s ease }
+  .toasts .flash.leaving { opacity:0; transform:translateX(16px) }
+  @keyframes toast-in { from { opacity:0; transform:translateY(-8px) } }
+  @media (max-width: 820px) {
+    .toasts { top:auto; bottom:1rem; left:1rem; right:1rem; width:auto; flex-direction:column-reverse }
+    .toasts .flash.leaving { transform:translateY(8px) }
+  }
   .flash.wait::before { content:""; width:14px; height:14px; flex:none; border-radius:50%; border:2px solid var(--pri); border-right-color:transparent; animation:spin .8s linear infinite }
   @keyframes spin { to { transform:rotate(360deg) } }
   .tag { display:inline-block; padding:.05rem .6rem; border-radius:99px; background:var(--pri-soft); color:var(--pri-fg); font-size:.78rem; font-weight:500; margin-right:.25rem }
@@ -211,11 +225,15 @@
 <div class="content">
 {% endif %}
 <main>
-  {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
   {% block body %}{% endblock %}
 </main>
 </div>
 </div>
 {% if not session.auth %}<button type="button" id="theme-toggle" class="floating"></button>{% endif %}
+<div class="toasts" id="toasts">
+  {%- for cat, msg in get_flashed_messages(with_categories=true) %}
+  <div class="flash {{ cat }}" data-flash role="{{ 'alert' if cat == 'error' else 'status' }}">{{ msg }}</div>
+  {%- endfor %}
+</div>
 </body>
 </html>

@@ -6,7 +6,16 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- Saving a user, or setting a user's password, returns to the Users list (with a message naming the
+  user). A rejected password keeps you on the user's page to try again.
+- The dashboard's Authelia and configuration status refresh every 15 seconds while the page is open
+  (paused in a background tab), and the Authelia card follows a restart live (down, then up).
+- Messages are now toasts that float over the page (top right; at the bottom on phones) instead of
+  pushing it down. Success messages leave after about 6 seconds (hovering pauses that); error messages stay
+  and have a × to dismiss them. The restart status is a toast too: it leaves 10 seconds after Authelia is
+  back up, and stays with a × if the restart had a problem. Notices about something that still needs
+  fixing (for example untrusted passkeys) stay in the page.
 
 ## 2026-11-20 (image `2026.11.20-1327`)
 

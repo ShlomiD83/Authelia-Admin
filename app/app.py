@@ -1064,14 +1064,14 @@ def user_edit(name):
         if action == "password":
             pw = request.form.get("password", "")
             err = validate_password(pw)
-            if err:
+            if err:   # stay on the user's page to try again
                 flash(err, "error")
-            else:
-                u["password"] = ph.hash(pw)
-                save_users(all_users)
-                audit("Password set", name)
-                flash("Password updated.", "ok")
-            return redirect(url_for("user_edit", name=name))
+                return redirect(url_for("user_edit", name=name))
+            u["password"] = ph.hash(pw)
+            save_users(all_users)
+            audit("Password set", name)
+            flash(f"Password for '{name}' updated.", "ok")
+            return redirect(url_for("users"))
         before = {k: u.get(k) for k in ("displayname", "email", "groups", "disabled")}
         u["displayname"] = request.form.get("displayname", "").strip() or name
         u["email"] = request.form.get("email", "").strip()
@@ -1087,8 +1087,8 @@ def user_edit(name):
                 changes.append(f"{label}: {old} → {new}")
         if changes:
             audit("User updated", name, "; ".join(changes))
-        flash("User updated.", "ok")
-        return redirect(url_for("user_edit", name=name))
+        flash(f"User '{name}' updated." if changes else f"No changes to '{name}'.", "ok")
+        return redirect(url_for("users"))
     return render_template("user_form.html", user=u, name=name, page="users")
 
 

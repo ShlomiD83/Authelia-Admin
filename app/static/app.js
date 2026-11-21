@@ -176,12 +176,12 @@ document.addEventListener("click", function (e) {
   var mode = new URLSearchParams(location.search).get("restarting");
   if (mode !== "flag" && mode !== "socket") return;
   document.addEventListener("DOMContentLoaded", function () {
-    var main = document.querySelector("main");
-    if (!main) return;
+    var holder = document.getElementById("toasts") || document.querySelector("main");
+    if (!holder) return;
     var card = document.createElement("div");
     card.className = "flash restart-status";
     card.setAttribute("role", "status");
-    main.insertBefore(card, main.firstChild);
+    holder.insertBefore(card, holder.firstChild);   // newest toast first
     // drop the parameter so a reload doesn't start watching again
     history.replaceState(null, "", location.pathname);
 
@@ -189,7 +189,14 @@ document.addEventListener("click", function (e) {
     function secs(t) { return Math.round((Date.now() - t) / 1000); }
     function show(cls, text) { card.className = "flash restart-status " + cls; card.textContent = text; }
     var done = false;
-    function finish(cls, text) { show(cls, text); done = true; }
+    function finish(cls, text) {
+      show(cls, text);
+      done = true;
+      if (cls === "ok") autoDismiss(card, 10000);   // all good: let it go after a while
+      else addClose(card);                      // a problem: stays until dismissed
+    }
+    // let the dashboard's Authelia card follow along
+    function tell(state) { document.dispatchEvent(new CustomEvent("authelia:status", { detail: state })); }
     show("wait", mode === "flag" ? "Restart requested. Waiting for the host service to pick it up…" : "Authelia container restarted. Checking that it comes back…");
 
     function poll() {
@@ -207,6 +214,7 @@ document.addEventListener("click", function (e) {
             finish("ok", "Restart request picked up by the host. (Set AUTHELIA_URL to also check that Authelia comes back up.)");
             return;
           }
+          if (s.authelia) tell(s.authelia);
           if (s.authelia === "down") {
             sawDown = true;
             if (!downSince) downSince = Date.now();
@@ -230,7 +238,7 @@ document.addEventListener("click", function (e) {
   });
 })();
 
-// ---- dashboard: the two slower checks (Authelia health, configuration validation) ----
+// ---- dashboard: Authelia health and configuration validation, refreshed while the page is open ----
 document.addEventListener("DOMContentLoaded", function () {
   var dash = document.getElementById("dash");
   if (!dash) return;
@@ -238,21 +246,68 @@ document.addEventListener("DOMContentLoaded", function () {
     var el = document.getElementById(id);
     if (el) { el.className = "tag " + cls; el.textContent = text; }
   }
-  fetch(dash.getAttribute("data-status"), { credentials: "same-origin", cache: "no-store" })
-    .then(function (r) { return r.json(); })
-    .then(function (s) {
-      if (s.authelia === "up") set("dash-authelia", "ok", "up");
-      else if (s.authelia === "down") set("dash-authelia", "bad", "down");
-      var sub = document.getElementById("dash-authelia-sub");
-      if (sub && s.authelia) sub.textContent = (s.authelia === "up" ? "Responding" : "Not responding") + " · checked " + s.checked;
-      if (s.config_ok === true) set("dash-config", "ok", "valid");
-      else if (s.config_ok === false) set("dash-config", "bad", s.config_problems + (s.config_problems === 1 ? " problem" : " problems"));
-      else set("dash-config", "mut", "not checked");
-      var cfg = document.getElementById("dash-config");
-      if (cfg && s.version) cfg.title = "Checked with Authelia " + s.version;
-    })
-    .catch(function () {
-      set("dash-authelia", "mut", "unknown");
-      set("dash-config", "mut", "unknown");
-    });
+  function hhmm() { var d = new Date(); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function showAuthelia(state, checked) {
+    if (state === "up") set("dash-authelia", "ok", "up");
+    else if (state === "down") set("dash-authelia", "bad", "down");
+    var sub = document.getElementById("dash-authelia-sub");
+    if (sub && state) sub.textContent = (state === "up" ? "Responding" : "Not responding") + " · checked " + (checked || hhmm());
+  }
+  var busy = false;
+  function refresh() {
+    if (busy || document.hidden) return;
+    busy = true;
+    fetch(dash.getAttribute("data-status"), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        showAuthelia(s.authelia, s.checked);
+        if (s.config_ok === true) set("dash-config", "ok", "valid");
+        else if (s.config_ok === false) set("dash-config", "bad", s.config_problems + (s.config_problems === 1 ? " problem" : " problems"));
+        else set("dash-config", "mut", "not checked");
+        var cfg = document.getElementById("dash-config");
+        if (cfg && s.version) cfg.title = "Checked with Authelia " + s.version;
+      })
+      .catch(function () {
+        set("dash-authelia", "mut", "unknown");
+        set("dash-config", "mut", "unknown");
+      })
+      .then(function () { busy = false; });
+  }
+  refresh();
+  setInterval(refresh, 15000);                                  // paused while the tab is in the background
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+  // during a restart, follow the restart watcher's checks (every second or so) instead of waiting
+  document.addEventListener("authelia:status", function (e) { showAuthelia(e.detail); });
+});
+
+// ---- messages (toasts): success messages leave by themselves; errors stay, with a close button ----
+function fadeOut(el, delay) {
+  setTimeout(function () {
+    el.classList.add("leaving");
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 400);
+  }, delay);
+}
+// leave after `delay`, but not while the mouse is over the toast (time to finish reading)
+function autoDismiss(el, delay) {
+  var timer = setTimeout(go, delay);
+  function go() { fadeOut(el, 0); }
+  el.addEventListener("mouseenter", function () { clearTimeout(timer); });
+  el.addEventListener("mouseleave", function () { clearTimeout(timer); timer = setTimeout(go, 2500); });
+}
+function addClose(el) {
+  if (el.querySelector(".flash-x")) return;
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "flash-x";
+  b.setAttribute("aria-label", "Dismiss");
+  b.textContent = "×";
+  b.addEventListener("click", function () { fadeOut(el, 0); });
+  el.appendChild(b);
+}
+document.addEventListener("DOMContentLoaded", function () {
+  // only one-time messages (data-flash); permanent notices about a state that needs fixing stay put
+  document.querySelectorAll(".flash[data-flash]").forEach(function (el) {
+    if (el.classList.contains("ok")) autoDismiss(el, 6000);
+    else addClose(el);
+  });
 });
