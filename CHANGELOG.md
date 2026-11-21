@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-21 (image `2026.11.21-0736`)
+
 ### Changed
 - The dashboard's version tag reads "Authelia version up to date" instead of just "up to date".
 
