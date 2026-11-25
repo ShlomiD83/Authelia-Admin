@@ -53,7 +53,7 @@
   .brand .ic { width:24px; height:24px; color:#8b8cff }
   a.brand { text-decoration:none } a.brand:hover { color:#fff; opacity:.85 }
   .side nav { display:flex; flex-direction:column; gap:.2rem }
-  .side-avatar { display:none }
+  .acct { display:none }
   .side nav .short { display:none }
   .side nav a, .side .sbtn { display:flex; align-items:center; gap:.65rem; padding:.55rem .7rem; border-radius:9px; color:var(--side-fg); text-decoration:none; white-space:nowrap; font:inherit; background:none; border:0; cursor:pointer; width:100%; text-align:left }
   .side nav a:hover, .side .sbtn:hover { background:var(--side-on); color:#fff }
@@ -193,12 +193,24 @@
     .brand img { width:34px; height:34px }
     .side form { margin:0 }
     .side form:has(button[title="Restart Authelia"]) { order:1 }
-    .side form:has(button[title="Log out"]) { order:2 }
+    .side form:has(button[title="Log out"]) { display:none }   /* on phones: Log out is in the account menu */
     .side #theme-toggle { order:3 }
     .side .sbtn { width:40px; height:40px; padding:0; justify-content:center; border:1px solid var(--side-on); border-radius:11px }
     .side .sbtn .ic { width:19px; height:19px }
     .sbtn .lbl { display:none }
-    .side-avatar { order:4; display:flex !important; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; background:color-mix(in srgb, var(--pri) 25%, var(--side)); color:#fff; font-weight:600; font-size:.85rem; text-decoration:none; border:1px solid color-mix(in srgb, var(--pri) 45%, transparent) }
+    .acct { order:4; display:block; position:relative }
+    .side-avatar { display:flex; cursor:pointer; font-family:inherit; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; background:color-mix(in srgb, var(--pri) 25%, var(--side)); color:#fff; font-weight:600; font-size:.85rem; text-decoration:none; border:1px solid color-mix(in srgb, var(--pri) 45%, transparent) }
+    .side-avatar[aria-expanded="true"] { box-shadow:0 0 0 3px color-mix(in srgb, var(--pri) 45%, transparent) }
+    .acct-menu { position:absolute; right:0; top:calc(100% + .5rem); width:min(290px, calc(100vw - 1.5rem)); z-index:60; background:var(--card); color:var(--fg); border:1px solid var(--bd); border-radius:14px; box-shadow:0 12px 32px rgba(0,0,0,.3); padding:.4rem; animation:toast-in .15s ease }
+    .acct-menu[hidden] { display:none }
+    .acct-head { display:flex; gap:.7rem; align-items:center; padding:.6rem .6rem .7rem; border-bottom:1px solid var(--bd); margin-bottom:.3rem }
+    .acct-av { flex:none; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:.85rem; background:var(--pri-soft); color:var(--pri-fg) }
+    .acct-sub { color:var(--mut); font-size:.8rem; line-height:1.35 }
+    .acct-menu a, .acct-menu button { display:flex; align-items:center; gap:.6rem; width:100%; padding:.65rem .6rem; border:0; border-radius:9px; background:none; color:var(--fg); font:inherit; font-size:.95rem; text-decoration:none; text-align:left; cursor:pointer }
+    .acct-menu a:hover, .acct-menu button:hover, .acct-menu a:focus-visible, .acct-menu button:focus-visible { background:var(--bg); outline:none }
+    .acct-menu .ic { width:18px; height:18px; color:var(--mut) }
+    .acct-menu form { margin:.3rem 0 0; padding-top:.3rem; border-top:1px solid var(--bd) }
+    .acct-out, .acct-out .ic { color:var(--bad) !important }
     .side .spacer { display:none }
     .side nav { order:5; width:calc(100% + 1.5rem); margin:.5rem -.75rem 0; display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:0; border-top:1px solid var(--side-on) }
     .side nav a { flex-direction:column; gap:.25rem; padding:.55rem .1rem .5rem; border-radius:0; font-size:.74rem; text-align:center; justify-content:center; border-bottom:3px solid transparent; white-space:nowrap }
@@ -251,7 +263,25 @@
   <form method="post" action="{{ url_for('logout') }}">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="sbtn" title="Log out">{{ ic('logout') }}<span class="lbl">Log out</span></button>
   </form>
-  <a class="side-avatar" href="{{ url_for('security') }}" title="Signed in as {{ admin_user }}: Security">{{ admin_user[:2]|upper }}</a>
+  <div class="acct">
+    <button type="button" class="side-avatar" id="acct-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="acct-menu" title="Account">{{ admin_user[:2]|upper }}</button>
+    <div class="acct-menu" id="acct-menu" role="menu" hidden>
+      <div class="acct-head">
+        <span class="acct-av">{{ admin_user[:2]|upper }}</span>
+        <div>
+          <strong>{{ admin_user }}</strong>
+          <div class="acct-sub">Signed in{% if session.via %} with {{ session.via }}{% endif %}{% if session.since %} at {{ session.since|clock }}{% endif %}</div>
+          {% if idle_minutes %}<div class="acct-sub">Signs out after {{ idle_minutes }} min without activity</div>{% endif %}
+        </div>
+      </div>
+      <a role="menuitem" href="{{ url_for('security') }}">{{ ic('key') }}Security: passkeys and TOTP</a>
+      <a role="menuitem" href="{{ url_for('activity') }}#audit-table">{{ ic('activity') }}Your recent actions</a>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button role="menuitem" class="acct-out">{{ ic('logout') }}Log out</button>
+      </form>
+    </div>
+  </div>
 </aside>
 <div class="content">
 {% else %}

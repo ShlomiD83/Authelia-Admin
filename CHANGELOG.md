@@ -6,7 +6,11 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- On phones, the initials in the top bar open an **account menu** instead of the Security page: who is
+  signed in, how and since when, the idle sign-out time, links to Security and to your recent actions,
+  and **Log out**. The separate Log out button in the phone top bar is gone (the desktop sidebar keeps
+  its Log out button).
 
 ## 2026-11-25 (image `2026.11.25-0556`)
 

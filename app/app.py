@@ -209,6 +209,8 @@ app.jinja_env.globals["csrf_token"] = csrf_token
 app.jinja_env.globals["can_restart"] = bool(AUTHELIA_CONTAINER or RESTART_FLAG_FILE)
 app.jinja_env.globals["tzname"] = str(TZINFO)
 app.jinja_env.globals["admin_user"] = ADMIN_USER
+app.jinja_env.globals["idle_minutes"] = IDLE_TIMEOUT // 60
+app.jinja_env.filters["clock"] = lambda ts: datetime.fromtimestamp(ts, TZINFO).strftime("%H:%M") if ts else ""
 app.jinja_env.globals["audit_problem"] = lambda: audit_error
 app.jinja_env.globals["uid_gid"] = f"{os.getuid()}:{os.getgid()}"
 app.jinja_env.globals["audit_file"] = os.environ.get("AUDIT_LOG_FILE") or os.path.join(CONFIG_DIR, "admin_audit.log")
@@ -553,6 +555,7 @@ def login():
             _failed.pop(ip, None)
             session["auth"] = True
             session["via"] = "password"
+            session["since"] = time.time()
             session.permanent = True
             audit("Signed in")
             return redirect(url_for("dashboard"))
@@ -584,6 +587,7 @@ def login_totp():
             session.clear()
             session["auth"] = True
             session["via"] = "password + TOTP"
+            session["since"] = time.time()
             session.permanent = True
             audit("Signed in")
             return redirect(url_for("dashboard"))
@@ -786,6 +790,7 @@ def pk_login_verify():
     session.clear()
     session["auth"] = True
     session["via"] = "passkey: " + pk.get("name", "Passkey")
+    session["since"] = time.time()
     session.permanent = True
     audit("Signed in")
     return jsonify(ok=True, next=url_for("dashboard"))

@@ -413,3 +413,19 @@ document.addEventListener("DOMContentLoaded", function () {
   setInterval(check, 15000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) check(); });
 });
+
+// ---- account menu (the initials button in the phone top bar) ----
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.getElementById("acct-btn"), menu = document.getElementById("acct-menu");
+  if (!btn || !menu) return;
+  function setOpen(open) {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) { var first = menu.querySelector("a, button"); if (first) first.focus(); }
+  }
+  btn.addEventListener("click", function (e) { e.stopPropagation(); setOpen(menu.hidden); });
+  document.addEventListener("click", function (e) { if (!menu.hidden && !menu.contains(e.target)) setOpen(false); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !menu.hidden) { setOpen(false); btn.focus(); }
+  });
+});
