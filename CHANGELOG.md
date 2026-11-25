@@ -6,6 +6,12 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+### Changed
+- **New phone layout**: a top bar with the logo, square Restart / Log out / light-dark buttons and an avatar
+  with the admin's initials (opens Security), and a tab bar where all six pages fit across the screen
+  (icon above a short label, the current page underlined). It stays at the top while scrolling. The
+  desktop sidebar is unchanged.
+
 ### Added
 - `scripts/install-restart-service.sh`: sets up the host side of the Restart button (flag-file mode) in
   one command. It creates, enables and starts the systemd path and service units for your Authelia folder

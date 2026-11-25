@@ -53,6 +53,8 @@
   .brand .ic { width:24px; height:24px; color:#8b8cff }
   a.brand { text-decoration:none } a.brand:hover { color:#fff; opacity:.85 }
   .side nav { display:flex; flex-direction:column; gap:.2rem }
+  .side-avatar { display:none }
+  .side nav .short { display:none }
   .side nav a, .side .sbtn { display:flex; align-items:center; gap:.65rem; padding:.55rem .7rem; border-radius:9px; color:var(--side-fg); text-decoration:none; white-space:nowrap; font:inherit; background:none; border:0; cursor:pointer; width:100%; text-align:left }
   .side nav a:hover, .side .sbtn:hover { background:var(--side-on); color:#fff }
   .side nav a.on { background:var(--side-on); color:#fff; box-shadow:inset 3px 0 0 #8b8cff }
@@ -184,13 +186,27 @@
   @media (max-width: 820px) {
     body { font-size:16px }
     .shell { flex-direction:column }
-    .side { width:auto; height:auto; position:static; flex-direction:row; flex-wrap:wrap; align-items:center; gap:.4rem; padding:.6rem .75rem }
-    .brand { padding:0 .4rem 0 0; flex:1 }
-    .side nav { order:3; flex-direction:row; width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch }
-    .side nav a { padding:.5rem .85rem }
-    .side .spacer { display:none }
-    .side .sbtn { width:auto; padding:.45rem .6rem }
+    /* phone: top bar (logo + square action buttons + avatar) and a tab bar (icon above a short label) */
+    .side { width:auto; height:auto; position:sticky; top:0; z-index:50; flex-direction:row; flex-wrap:wrap; align-items:center; gap:.5rem; padding:.6rem .75rem 0 }
+    .brand { order:0; padding:0; flex:1; min-width:0 }
+    .brand span { display:none }
+    .brand img { width:34px; height:34px }
+    .side form { margin:0 }
+    .side form:has(button[title="Restart Authelia"]) { order:1 }
+    .side form:has(button[title="Log out"]) { order:2 }
+    .side #theme-toggle { order:3 }
+    .side .sbtn { width:40px; height:40px; padding:0; justify-content:center; border:1px solid var(--side-on); border-radius:11px }
+    .side .sbtn .ic { width:19px; height:19px }
     .sbtn .lbl { display:none }
+    .side-avatar { order:4; display:flex !important; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; background:color-mix(in srgb, var(--pri) 25%, var(--side)); color:#fff; font-weight:600; font-size:.85rem; text-decoration:none; border:1px solid color-mix(in srgb, var(--pri) 45%, transparent) }
+    .side .spacer { display:none }
+    .side nav { order:5; width:calc(100% + 1.5rem); margin:.5rem -.75rem 0; display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:0; border-top:1px solid var(--side-on) }
+    .side nav a { flex-direction:column; gap:.25rem; padding:.55rem .1rem .5rem; border-radius:0; font-size:.74rem; text-align:center; justify-content:center; border-bottom:3px solid transparent; white-space:nowrap }
+    .side nav a .ic { width:20px; height:20px }
+    .side nav a:hover { background:transparent }
+    .side nav a.on { background:transparent; box-shadow:none; color:#a5a6ff; border-bottom-color:#8b8cff }   /* the bar is dark in both themes */
+    .side nav .full { display:none }
+    .side nav .short { display:inline }
     main { padding:1rem .75rem 2.5rem }
     .noside main { padding-top:8vh }
     .card { padding:1rem }
@@ -218,9 +234,9 @@
 <aside class="side">
   <a class="brand" href="{{ url_for('dashboard') }}" title="Dashboard"><img src="{{ url_for('static', filename='favicon.svg') }}" alt="" width="28" height="28"><span>Authelia Admin</span></a>
   <nav>
-    <a href="{{ url_for('dashboard') }}" class="{{ 'on' if page=='dashboard' }}">{{ ic('home') }}<span>Dashboard</span></a>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'on' if page=='dashboard' }}">{{ ic('home') }}<span class="full">Dashboard</span><span class="short">Home</span></a>
     <a href="{{ url_for('users') }}" class="{{ 'on' if page=='users' }}">{{ ic('users') }}<span>Users</span></a>
-    <a href="{{ url_for('config') }}" class="{{ 'on' if page=='config' }}">{{ ic('config') }}<span>Configuration</span></a>
+    <a href="{{ url_for('config') }}" class="{{ 'on' if page=='config' }}">{{ ic('config') }}<span class="full">Configuration</span><span class="short">Config</span></a>
     <a href="{{ url_for('activity') }}" class="{{ 'on' if page=='activity' }}">{{ ic('activity') }}<span>Activity</span></a>
     <a href="{{ url_for('backups') }}" class="{{ 'on' if page=='backups' }}">{{ ic('archive') }}<span>Backups</span></a>
     <a href="{{ url_for('security') }}" class="{{ 'on' if page=='security' }}">{{ ic('key') }}<span>Security</span></a>
@@ -235,6 +251,7 @@
   <form method="post" action="{{ url_for('logout') }}">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="sbtn" title="Log out">{{ ic('logout') }}<span class="lbl">Log out</span></button>
   </form>
+  <a class="side-avatar" href="{{ url_for('security') }}" title="Signed in as {{ admin_user }}: Security">{{ admin_user[:2]|upper }}</a>
 </aside>
 <div class="content">
 {% else %}

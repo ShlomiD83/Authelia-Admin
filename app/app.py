@@ -208,6 +208,7 @@ def csrf_token():
 app.jinja_env.globals["csrf_token"] = csrf_token
 app.jinja_env.globals["can_restart"] = bool(AUTHELIA_CONTAINER or RESTART_FLAG_FILE)
 app.jinja_env.globals["tzname"] = str(TZINFO)
+app.jinja_env.globals["admin_user"] = ADMIN_USER
 app.jinja_env.globals["audit_problem"] = lambda: audit_error
 app.jinja_env.globals["uid_gid"] = f"{os.getuid()}:{os.getgid()}"
 app.jinja_env.globals["audit_file"] = os.environ.get("AUDIT_LOG_FILE") or os.path.join(CONFIG_DIR, "admin_audit.log")
