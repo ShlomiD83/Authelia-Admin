@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-25 (image `2026.11.25-0556`)
+
 ### Changed
 - **New phone layout**: a top bar with the logo, square Restart / Log out / light-dark buttons and an avatar
   with the admin's initials (opens Security), and a tab bar where all six pages fit across the screen
