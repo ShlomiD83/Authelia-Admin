@@ -6,7 +6,8 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+- The sign-in page's theme selector is centred under the form, in line with the rest of the page.
 
 ## 2026-11-25 (image `2026.11.25-0645`)
 
