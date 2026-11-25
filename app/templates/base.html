@@ -181,9 +181,14 @@
   @media (max-width: 900px) { .dash3, .dash2 { grid-template-columns:minmax(0,1fr) } }
   .off { opacity:.55 }
   form.inline { display:inline }
-  /* theme switch on pages without the sidebar (sign-in): top right, with a label */
-  #theme-toggle.floating { position:fixed; top:14px; right:14px; z-index:20; display:inline-flex; align-items:center; gap:.45rem; padding:.45rem .9rem; border-radius:99px; border:1px solid var(--bd); background:var(--card); color:var(--fg); font:inherit; font-size:.88rem; font-weight:500; cursor:pointer; box-shadow:var(--shadow) }
-  #theme-toggle.floating:hover { border-color:var(--pri) }
+  /* theme selector on pages without the sidebar (sign-in): Auto / Light / Dark under the form */
+  .theme-seg { display:flex; justify-content:flex-end; align-items:center; gap:.6rem; margin-top:1rem; color:var(--mut); font-size:.9rem }
+  .seg { display:inline-flex; border:1px solid var(--bd); border-radius:10px; overflow:hidden; background:var(--card) }
+  .seg button { border:0; border-left:1px solid var(--bd); background:none; color:var(--mut); font:inherit; font-weight:600; padding:.45rem .85rem; cursor:pointer }
+  .seg button:first-child { border-left:0 }
+  .seg button:hover { color:var(--fg) }
+  .seg button[aria-checked="true"] { background:var(--pri-soft); color:var(--pri-fg) }
+  .seg button:focus-visible { outline:2px solid var(--pri); outline-offset:-2px }
   code { background:var(--bg); padding:.1rem .35rem; border-radius:5px; font-size:.88em }
 
   /* ---- mobile: sidebar becomes a top bar ---- */
@@ -295,10 +300,19 @@
 {% endif %}
 <main>
   {% block body %}{% endblock %}
+  {% if not session.auth %}
+  <div class="theme-seg">
+    <span id="theme-seg-label">Theme</span>
+    <div class="seg" role="radiogroup" aria-labelledby="theme-seg-label">
+      <button type="button" role="radio" aria-checked="false" data-theme-set="auto" title="Follow this device's light or dark setting">Auto</button>
+      <button type="button" role="radio" aria-checked="false" data-theme-set="light">Light</button>
+      <button type="button" role="radio" aria-checked="false" data-theme-set="dark">Dark</button>
+    </div>
+  </div>
+  {% endif %}
 </main>
 </div>
 </div>
-{% if not session.auth %}<button type="button" id="theme-toggle" class="floating" data-label></button>{% endif %}
 <div class="toasts" id="toasts">
   {%- for cat, msg in get_flashed_messages(with_categories=true) %}
   <div class="flash {{ cat }}" data-flash role="{{ 'alert' if cat == 'error' else 'status' }}">{{ msg }}</div>

@@ -26,6 +26,34 @@
     btn.title = label; btn.setAttribute("aria-label", label);
   }
   document.addEventListener("DOMContentLoaded", function () {
+    // sign-in pages: Auto / Light / Dark selector
+    var seg = document.querySelectorAll("[data-theme-set]");
+    if (seg.length) {
+      var mark = function () {
+        var cur = root.getAttribute("data-theme") || "auto";
+        seg.forEach(function (b) {
+          var on = b.getAttribute("data-theme-set") === cur;
+          b.setAttribute("aria-checked", on ? "true" : "false");
+          b.tabIndex = on ? 0 : -1;
+        });
+      };
+      seg.forEach(function (b, i) {
+        b.addEventListener("click", function () {
+          var v = b.getAttribute("data-theme-set");
+          if (v === "auto") { root.removeAttribute("data-theme"); try { localStorage.removeItem("theme"); } catch (e) {} }
+          else { root.setAttribute("data-theme", v); save(v); }
+          mark();
+        });
+        b.addEventListener("keydown", function (e) {
+          var d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+          if (!d) return;
+          e.preventDefault();
+          var n = seg[(i + d + seg.length) % seg.length]; n.focus(); n.click();
+        });
+      });
+      mark();
+      return;
+    }
     var btn = document.getElementById("theme-toggle");
     var created = !btn;
     if (created) { btn = document.createElement("button"); btn.id = "theme-toggle"; btn.type = "button"; btn.className = "floating"; }

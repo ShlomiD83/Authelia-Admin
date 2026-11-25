@@ -6,7 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- The sign-in page now has a **Theme: Auto | Light | Dark** selector under the form instead of the corner
+  button. Auto follows the device's light or dark setting; the choice is remembered and carries over after
+  signing in.
 
 ## 2026-11-25 (image `2026.11.25-0621`)
 
