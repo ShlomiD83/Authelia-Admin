@@ -6,7 +6,15 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- The theme switch on the sign-in page is now a labelled button in the top-right corner ("Light mode" /
+  "Dark mode") instead of a small round icon in the bottom-right corner. The choice carries over after
+  signing in.
+
+### Fixed
+- "Your recent actions" (account menu) and "All admin actions" (dashboard) now open the Activity page at
+  the top of the Admin actions section; on phones it was hidden under the sticky top bar, so the list
+  seemed to start in the middle.
 
 ## 2026-11-25 (image `2026.11.25-0612`)
 
