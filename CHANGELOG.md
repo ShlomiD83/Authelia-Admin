@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-25 (image `2026.11.25-0621`)
+
 ### Changed
 - The theme switch on the sign-in page is now a labelled button in the top-right corner ("Light mode" /
   "Dark mode") instead of a small round icon in the bottom-right corner. The choice carries over after
