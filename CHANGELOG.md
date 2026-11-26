@@ -6,6 +6,12 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+### Changed
+- Image cleanup keeps the newest 3 images instead of 5 (Docker Hub and GHCR). A manual **Docker Hub cleanup**
+  workflow (Actions tab) cleans up Docker Hub without a build.
+
+## 2026-11-26 (image `2026.11.26-1947`)
+
 ### Fixed
 - No more scroll bar when everything fits: less empty space below the page content, and the configuration
   editor now sizes itself to the window instead of a fixed 65% of its height.

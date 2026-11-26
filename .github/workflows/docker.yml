@@ -197,7 +197,7 @@ jobs:
     needs: merge
     continue-on-error: true
     env:
-      KEEP: 5
+      KEEP: 3
     steps:
       # GHCR: also removes untagged leftovers. The action is multi-arch aware, so the platform images and
       # attestations that a kept tag uses stay.
