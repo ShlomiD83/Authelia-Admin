@@ -6,7 +6,14 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+- The "Authelia version up to date" tag no longer disappears for an hour after one failed check: the GitHub
+  release check is retried after 10 minutes, the built-in version check is retried too (it used to give up
+  until the next restart), and the reason for a failure is written to the container log.
+
+### Changed
+- The dashboard's Authelia card no longer has its own Restart button; use Restart Authelia in the sidebar
+  (or the top bar on phones).
 
 ## 2026-11-26 (image `2026.11.26-2011`)
 

@@ -880,23 +880,29 @@ def dashboard():
 
 _validation_cache = {}   # fingerprint of configuration.yml -> (ok, problems)
 _authelia_version = None
+_authelia_version_failed_at = 0.0
 
 
 def authelia_version():
-    global _authelia_version
-    if _authelia_version is None and AUTHELIA_BIN:
+    """Version of the built-in Authelia CLI. Cached once known; after a failure it is retried 5 minutes later."""
+    global _authelia_version, _authelia_version_failed_at
+    if _authelia_version is None and AUTHELIA_BIN and time.time() - _authelia_version_failed_at > 300:
         try:
-            out = subprocess.run([AUTHELIA_BIN, "--version"], capture_output=True, text=True, timeout=10,
+            out = subprocess.run([AUTHELIA_BIN, "--version"], capture_output=True, text=True, timeout=20,
                                  env=CLI_ENV).stdout
             m = re.search(r"v?(\d+\.\d+\.\d+)", out)
-            _authelia_version = "v" + m.group(1) if m else ""
-        except Exception:
-            _authelia_version = ""
+            if not m:
+                raise ValueError(f"unexpected output: {out.strip()[:100]!r}")
+            _authelia_version = "v" + m.group(1)
+        except Exception as e:
+            _authelia_version_failed_at = time.time()
+            print(f"Authelia version check failed (retrying in 5 minutes): {e}", flush=True)
     return _authelia_version or ""
 
 
 # Newest Authelia release on GitHub, to tell when the image's built-in Authelia CLI (used for validation and
-# the editor's schema) is behind. Cached for 6 hours (1 hour after a failure). UPDATE_CHECK=false turns it off.
+# the editor's schema) is behind. Cached for 6 hours; after a failure it is retried 10 minutes later.
+# UPDATE_CHECK=false turns it off.
 UPDATE_CHECK = os.environ.get("UPDATE_CHECK", "true").lower() != "false"
 _release_cache = {"at": 0.0, "version": None}
 
@@ -905,7 +911,7 @@ def latest_authelia_release():
     if not UPDATE_CHECK:
         return None
     age = time.time() - _release_cache["at"]
-    if age < (6 * 3600 if _release_cache["version"] else 3600) and _release_cache["at"]:
+    if age < (6 * 3600 if _release_cache["version"] else 600) and _release_cache["at"]:
         return _release_cache["version"]
     import urllib.request
     version = None
@@ -913,12 +919,15 @@ def latest_authelia_release():
         req = urllib.request.Request("https://api.github.com/repos/authelia/authelia/releases/latest",
                                      headers={"Accept": "application/vnd.github+json",
                                               "User-Agent": "authelia-admin-update-check"})
-        with urllib.request.urlopen(req, timeout=4) as r:
+        with urllib.request.urlopen(req, timeout=8) as r:
             tag = json.load(r).get("tag_name", "")
         m = re.match(r"v?(\d+\.\d+\.\d+)$", tag)
-        version = "v" + m.group(1) if m else None
-    except Exception:
-        version = None   # offline or rate-limited: no notice, try again later
+        if not m:
+            raise ValueError(f"unexpected tag {tag!r}")
+        version = "v" + m.group(1)
+    except Exception as e:
+        version = None   # offline or rate-limited: no notice, try again in 10 minutes
+        print(f"Update check failed (retrying in 10 minutes): {e}", flush=True)
     _release_cache.update(at=time.time(), version=version)
     return version
 
