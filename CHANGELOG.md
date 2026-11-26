@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-26 (image `2026.11.26-2011`)
+
 ### Changed
 - Dashboard spacing loosened to halfway between the original and the compact layout.
 
