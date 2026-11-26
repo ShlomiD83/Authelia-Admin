@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-26 (image `2026.11.26-1929`)
+
 ### Added
 - Restart through a Docker socket proxy (`AUTHELIA_CONTAINER` with `DOCKER_HOST`). The restart is sent by
   container name, so the proxy can be limited to restarting only Authelia. With `RESTART_FLAG_FILE` also set,
