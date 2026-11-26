@@ -270,7 +270,7 @@
     <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="sbtn" title="Restart Authelia">{{ ic('refresh') }}<span class="lbl">Restart Authelia</span></button>
   </form>
   {% endif %}
-  <form method="post" action="{{ url_for('logout') }}">
+  <form method="post" action="{{ url_for('logout') }}" data-confirm="Log out of Authelia Admin?">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="sbtn" title="Log out">{{ ic('logout') }}<span class="lbl">Log out</span></button>
   </form>
   <div class="acct">
@@ -286,7 +286,7 @@
       </div>
       <a role="menuitem" href="{{ url_for('security') }}">{{ ic('key') }}Security: passkeys and TOTP</a>
       <a role="menuitem" href="{{ url_for("activity") }}#admin-actions">{{ ic('activity') }}Your recent actions</a>
-      <form method="post" action="{{ url_for('logout') }}">
+      <form method="post" action="{{ url_for('logout') }}" data-confirm="Log out of Authelia Admin?">
         <input type="hidden" name="csrf" value="{{ csrf_token() }}">
         <button role="menuitem" class="acct-out">{{ ic('logout') }}Log out</button>
       </form>
