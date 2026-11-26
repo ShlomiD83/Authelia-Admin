@@ -334,7 +334,7 @@ You don't have to build anything: use the published image in compose and drop th
 - pushing a version tag such as `v1.2.3` also runs it and publishes `latest`, `1.2.3` and `1.2`
 - the weekly CVE check (below) runs it when the published image has fixable vulnerabilities
 
-To use it in your own fork, add two repository secrets (Settings > Secrets and variables > Actions): `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read and Write scope). The image is published as `<your Docker Hub user>/authelia-admin` and `ghcr.io/<your GitHub user>/authelia-admin`; GHCR needs no secret (the workflow's own token is used). A new GHCR package starts out private: make it public once under your GitHub profile > Packages > authelia-admin > Package settings > Change visibility. Then use it in compose instead of building:
+To use it in your own fork, add a repository variable `DOCKERHUB_USERNAME` (your Docker Hub user name) and a repository secret `DOCKERHUB_TOKEN` (a Docker Hub access token with Read and Write scope), under Settings > Secrets and variables > Actions. The image is published as `<your Docker Hub user>/authelia-admin` and `ghcr.io/<your GitHub user>/authelia-admin`; GHCR needs no secret (the workflow's own token is used). A new GHCR package starts out private: make it public once under your GitHub profile > Packages > authelia-admin > Package settings > Change visibility. Then use it in compose instead of building:
 
 ```yaml
     image: youruser/authelia-admin:latest   # remove the "build: ." line

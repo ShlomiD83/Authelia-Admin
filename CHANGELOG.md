@@ -7,6 +7,8 @@ entries are headed by date. Changes not yet in a published image are listed unde
 ## Unreleased
 
 ### Changed
+- The workflows read the Docker Hub user name from the `DOCKERHUB_USERNAME` repository variable instead of a
+  secret.
 - More compact dashboard (smaller gaps and padding, tighter list rows), about 90 px shorter, so it fits
   smaller windows without a scroll bar. Phone layout unchanged.
 - Image cleanup keeps the newest 3 images instead of 5 (Docker Hub and GHCR). A manual **Docker Hub cleanup**

@@ -25,8 +25,8 @@ jobs:
 
       - uses: peter-evans/dockerhub-description@v5
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ secrets.DOCKERHUB_USERNAME }}/authelia-admin
+          repository: ${{ vars.DOCKERHUB_USERNAME }}/authelia-admin
           short-description: "Web UI to manage Authelia: users, config, backups, 2FA reset, passkeys and TOTP. amd64 and arm64."
           readme-filepath: ./README.md
