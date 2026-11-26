@@ -1,0 +1,90 @@
+name: Dependabot check
+
+# For every Dependabot pull request:
+#   1. build the image once (amd64, not pushed) and run the smoke test (tests/smoke-test.sh)
+#   2. when the pull request is opened, label it and mention the repository owner in a comment with the
+#      update type and the test result, so GitHub notifies you (bell icon, and email with the default
+#      settings)
+# Nothing is merged automatically: review the pull request and merge it yourself. Merging does not
+# publish an image; run the image workflow (docker.yml) afterwards for Python or editor updates.
+
+on: pull_request
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check the update
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      update-type: ${{ steps.meta.outputs.update-type }}
+      ecosystem: ${{ steps.meta.outputs.package-ecosystem }}
+    steps:
+      - name: Read the update details
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build the image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          provenance: false
+          tags: authelia-admin:test
+          cache-from: type=gha,scope=linux-amd64
+
+      - name: Smoke test
+        run: bash tests/smoke-test.sh authelia-admin:test
+
+  # Runs once when the pull request is opened or reopened, not on every Dependabot rebase, and also
+  # when the test fails (the comment then says so).
+  notify:
+    name: Notify the owner
+    needs: check
+    if: >-
+      always() &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.action != 'synchronize'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Label and mention the owner
+        run: |
+          case "$UPDATE_TYPE" in
+            version-update:semver-major) kind="a **major** version update (may need code changes)" ;;
+            version-update:semver-minor) kind="a minor version update" ;;
+            version-update:semver-patch) kind="a patch update" ;;
+            *) kind="a dependency update" ;;
+          esac
+          if [ "$RESULT" = "success" ]; then
+            test="The test build and smoke test passed."
+          else
+            test="The test build or smoke test **failed** ($RESULT): see the checks below before merging."
+          fi
+          gh label create dependency-update --repo "$GITHUB_REPOSITORY" --color 0366D6 \
+            --description "Dependabot update waiting for review" --force
+          gh pr edit "$PR_URL" --add-label dependency-update
+          if [ "$UPDATE_TYPE" = "version-update:semver-major" ]; then
+            gh label create major-update --repo "$GITHUB_REPOSITORY" --color D93F0B \
+              --description "Major dependency update, needs manual review" --force
+            gh pr edit "$PR_URL" --add-label major-update
+          fi
+          gh pr comment "$PR_URL" --body "@${OWNER} this is ${kind}. ${test} Nothing was merged automatically; review the release notes and merge it if it looks fine. For Python or editor updates, run the image workflow afterwards to publish a new image."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          OWNER: ${{ github.repository_owner }}
+          UPDATE_TYPE: ${{ needs.check.outputs.update-type }}
+          RESULT: ${{ needs.check.result }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

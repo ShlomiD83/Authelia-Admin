@@ -1,6 +1,6 @@
-# Weekly pull requests for outdated or vulnerable dependencies. Patch and minor updates are merged
-# automatically after a test build (see workflows/dependabot-automerge.yml), and Python updates are
-# then published as a new image. Major updates stay open for you to review.
+# Weekly pull requests for outdated or vulnerable dependencies. Nothing is merged automatically: each
+# pull request gets a test build, and you are notified to review and merge it
+# (see workflows/dependabot-check.yml).
 version: 2
 updates:
   - package-ecosystem: pip

@@ -6,7 +6,6 @@ name: Build and push image
 #    newest Authelia release and base-image patches
 #  - on a version tag (v1.2.3) you push yourself -> tags latest, 1.2.3, 1.2
 #  - from the weekly CVE check (cve-check.yml), only when it finds fixable vulnerabilities
-#  - after Dependabot auto-merges a Python or editor package update (dependabot-automerge.yml)
 # Each platform image is smoke-tested (tests/smoke-test.sh) on its own runner before anything is pushed;
 # if a test fails, nothing is published.
 # It has no schedule of its own. Each build overwrites only `latest` and also gets its own permanent tag with

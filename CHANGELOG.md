@@ -6,7 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+- Dependabot updates are no longer merged automatically. Each pull request still gets a test build, then
+  you are notified (a label and a comment mentioning you, with the update type and the test result) to
+  review and merge it yourself.
 
 ## 2026-11-25 (image `2026.11.25-0651`)
 
