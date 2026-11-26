@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-26 (image `2026.11.26-1847`)
+
 ### Changed
 - Log out asks for confirmation first (sidebar and the phone account menu). Idle sign-out is unchanged.
 
