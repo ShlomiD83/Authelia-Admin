@@ -265,6 +265,21 @@ function setup(ta) {
     })
   });
 
+  // Fit the editor to the window so the page itself does not scroll: start from 65vh, then shrink or grow
+  // by however much the content ends below or above the window (at least 320px, at most 75vh).
+  function fitEditor() {
+    const ed = view.dom;
+    if (window.matchMedia("(max-width: 820px)").matches) { ed.style.height = ""; return; }
+    const cur = ed.getBoundingClientRect().height;
+    const main = ed.closest("main") || document.body;   // the page is always at least window-tall, so measure the content
+    const extra = main.getBoundingClientRect().bottom + window.scrollY - window.innerHeight;
+    const h = Math.max(320, Math.min(cur - extra, window.innerHeight * 0.75));
+    if (Math.abs(h - cur) >= 1) { ed.style.height = Math.floor(h) + "px"; view.requestMeasure(); }
+  }
+  requestAnimationFrame(fitEditor);
+  let fitTimer;
+  window.addEventListener("resize", () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitEditor, 100); });
+
   // "N problems" button: opens the list (also Ctrl+Shift+M); on load, jump to the first problem
   function firstProblem(state) {
     let first = null;
