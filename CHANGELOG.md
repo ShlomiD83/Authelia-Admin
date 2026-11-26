@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-26 (image `2026.11.26-2005`)
+
 ### Changed
 - The workflows read the Docker Hub user name from the `DOCKERHUB_USERNAME` repository variable instead of a
   secret.
