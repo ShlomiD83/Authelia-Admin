@@ -6,7 +6,12 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-26 (image `2026.11.26-1104`)
+
 ### Changed
+- PyYAML 6.0.3 → 6.0.4 (bug fixes).
 - Dependabot updates are no longer merged automatically. Each pull request still gets a test build, then
   you are notified (a label and a comment mentioning you, with the update type and the test result) to
   review and merge it yourself.
