@@ -254,7 +254,7 @@ document.addEventListener("click", function (e) {
             pickedAt = Date.now();
           }
           if (s.authelia === null) {
-            finish("ok", "Restart request picked up by the host. (Set AUTHELIA_URL to also check that Authelia comes back up.)");
+            finish("ok", (mode === "socket" ? "Authelia container restarted." : "Restart request picked up by the host.") + " (Set AUTHELIA_URL to also check that Authelia comes back up.)");
             return;
           }
           if (s.authelia) tell(s.authelia);

@@ -48,8 +48,10 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, os.environ.get("AUTHELIA_CONFIG_FILE", "c
 USERS_FILE = os.path.join(CONFIG_DIR, os.environ.get("AUTHELIA_USERS_FILE", "users_database.yml"))
 BACKUP_DIR = os.path.join(CONFIG_DIR, "backups")
 MAX_BACKUPS = int(os.environ.get("MAX_BACKUPS", "30"))
-AUTHELIA_CONTAINER = os.environ.get("AUTHELIA_CONTAINER", "")  # enables restart button (Docker socket mode)
+# Restart through the Docker API: a socket proxy (DOCKER_HOST=tcp://socket-proxy:2375) or the Docker socket.
+AUTHELIA_CONTAINER = os.environ.get("AUTHELIA_CONTAINER", "")
 # Socket-free restart: the button creates this file and a host-side systemd path unit restarts Authelia.
+# With both set, the Docker API is tried first and the flag file is the fallback.
 RESTART_FLAG_FILE = os.environ.get("RESTART_FLAG_FILE", "")
 # Optional: Authelia's address as seen from this container (e.g. http://authelia:9091). After a restart the
 # page polls Authelia's /api/health through this app and reports when Authelia is back up.
@@ -1397,27 +1399,63 @@ def restart():
     ref = urllib.parse.urlparse(request.referrer or "").path or url_for("config")
     if not ref.startswith("/") or ref.startswith("//"):
         ref = url_for("config")
-    if RESTART_FLAG_FILE:
+    failed = None
+    if AUTHELIA_CONTAINER:
         try:
-            with open(RESTART_FLAG_FILE, "w") as fh:
-                fh.write(now().isoformat() + "\n")
+            docker_restart()
         except Exception as e:
-            flash(f"Couldn't create the restart request file: {e}", "error")
-            return redirect(ref)
-        audit("Restart requested", "Authelia", "flag file")
-        return redirect(ref + "?restarting=flag")
-    try:
-        import docker
-        docker.from_env().containers.get(AUTHELIA_CONTAINER).restart(timeout=10)
-    except Exception as e:
-        if "No such file" in str(e) or "Permission denied" in str(e):
-            flash("Restart failed: can't use the Docker socket. Mount /var/run/docker.sock into this "
-                  "container and give its user access to it (group_add with the docker group id).", "error")
+            failed = docker_error(e)
+            print(f"Restart through the Docker API failed: {e}", flush=True)
+            if not RESTART_FLAG_FILE:
+                flash(f"Restart failed: {failed}", "error")
+                return redirect(ref)
         else:
-            flash(f"Restart failed: {e}", "error")
+            audit("Restarted", AUTHELIA_CONTAINER, docker_via())
+            return redirect(ref + "?restarting=socket")
+    try:
+        with open(RESTART_FLAG_FILE, "w") as fh:
+            fh.write(now().isoformat() + "\n")
+    except Exception as e:
+        flash(f"Couldn't create the restart request file: {e}" + (f" (and the Docker API restart failed: {failed})" if failed else ""), "error")
         return redirect(ref)
-    audit("Restarted", AUTHELIA_CONTAINER, "Docker socket")
-    return redirect(ref + "?restarting=socket")
+    if failed:
+        flash(f"Restart through the Docker API failed ({failed}), so the host service was asked instead.", "warn")
+        audit("Restart requested", "Authelia", "flag file (Docker API failed)")
+    else:
+        audit("Restart requested", "Authelia", "flag file")
+    return redirect(ref + "?restarting=flag")
+
+
+def docker_via():
+    return "socket proxy" if os.environ.get("DOCKER_HOST", "").startswith(("tcp://", "http://", "https://")) else "Docker socket"
+
+
+def docker_restart():
+    """Restart Authelia's container by name: POST /containers/<name>/restart (plus GET /version to pick the
+    API version), so a socket proxy can allow exactly these two requests."""
+    import docker
+    client = docker.from_env(timeout=30)
+    try:
+        client.api.restart(AUTHELIA_CONTAINER, timeout=10)
+    finally:
+        client.close()
+
+
+def docker_error(e):
+    """A short, actionable reason for a failed Docker API restart."""
+    text = str(e)
+    code = getattr(getattr(e, "response", None), "status_code", None) or getattr(e, "status_code", None)
+    if code == 404 or "No such container" in text:
+        return f"no container named {AUTHELIA_CONTAINER!r} (check AUTHELIA_CONTAINER)"
+    if code == 403 or " 403 " in text or "Forbidden" in text:
+        return (f"the socket proxy refused it; allow GET /version and POST "
+                f"/containers/{AUTHELIA_CONTAINER}/restart for this container")
+    if "No such file" in text or "Permission denied" in text:
+        return ("can't use the Docker socket; set DOCKER_HOST to a socket proxy, or mount "
+                "/var/run/docker.sock with group_add")
+    if "Connection" in text or "connect" in text or "Max retries" in text or "timed out" in text:
+        return f"can't reach Docker at {os.environ.get('DOCKER_HOST') or 'the Docker socket'}"
+    return text[:200]
 
 
 def authelia_health():

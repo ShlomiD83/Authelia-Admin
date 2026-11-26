@@ -126,6 +126,7 @@
   .flash code { font-weight:400; padding:.05rem .35rem; border-radius:5px; background:color-mix(in srgb, var(--fg) 8%, transparent) }
   .flash.ok { background:color-mix(in srgb, var(--ok) 14%, var(--card)); border-color:color-mix(in srgb, var(--ok) 45%, transparent); color:var(--fg) }
   .flash.error { background:color-mix(in srgb, var(--bad) 14%, var(--card)); border-color:color-mix(in srgb, var(--bad) 45%, transparent); color:var(--fg) }
+  .flash.warn { background:color-mix(in srgb, #f59e0b 16%, var(--card)); border-color:color-mix(in srgb, #f59e0b 50%, transparent); color:var(--fg) }
   .flash.wait { display:flex; gap:.6rem; align-items:center; background:color-mix(in srgb, var(--pri) 10%, var(--card)); border-color:color-mix(in srgb, var(--pri) 40%, transparent); color:var(--fg) }
   /* toasts: one-time messages float over the page (top right; bottom on phones) instead of pushing it down */
   .toasts { position:fixed; top:1rem; right:1rem; z-index:1000; display:flex; flex-direction:column; gap:.6rem; width:min(380px, calc(100vw - 2rem)); pointer-events:none }

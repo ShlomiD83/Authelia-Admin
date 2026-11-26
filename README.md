@@ -173,7 +173,8 @@ Passkeys are enabled when both `ADMIN_RP_ID` and `ADMIN_ORIGIN` are set.
 | Variable | Default | Description |
 |---|---|---|
 | `RESTART_FLAG_FILE` | – | Enables the Restart button in flag-file mode (recommended): the button creates this file, for example `/config/.restart-request`, and a host service restarts Authelia. |
-| `AUTHELIA_CONTAINER` | – | Name of the Authelia container. Enables the Restart button in Docker-socket mode. If both are set, the flag file is used. |
+| `AUTHELIA_CONTAINER` | – | Name of the Authelia container. Enables the Restart button through the Docker API (a socket proxy, or the Docker socket). If both are set, the Docker API is tried first and the flag file is the fallback. |
+| `DOCKER_HOST` | Docker socket | Where the Docker API is, for example `tcp://socket-proxy:2375` for a socket proxy. Only used with `AUTHELIA_CONTAINER`. |
 | `AUTHELIA_URL` | – | Authelia's address as this container reaches it, for example `http://authelia:9091` (same Docker network) or `http://192.168.1.10:9091`. After a restart the page checks Authelia's `/api/health` and reports when it is back up, or that it didn't come back. Without it, the page only confirms that the host picked up the restart request. A request the host doesn't pick up within 20 seconds is withdrawn, so Authelia can't restart later by surprise. |
 | `UPDATE_CHECK` | `true` | The dashboard asks GitHub (at most every 6 hours, no personal data) for Authelia's latest release and says when it's newer than the Authelia built into this image, so you know to pull a new admin image. `false` turns it off. |
 
@@ -256,6 +257,37 @@ ExecStart=/usr/bin/docker restart authelia
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now authelia-restart.path
 ```
+
+**Socket proxy.** If you run a Docker socket proxy, the app can restart Authelia through it. Set `AUTHELIA_CONTAINER` and `DOCKER_HOST`, put both containers on a shared network, and allow only the two requests the app makes. With [wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy):
+
+```yaml
+  socket-proxy:
+    image: wollomatic/socket-proxy:1
+    restart: unless-stopped
+    user: "65534:<docker group id>"   # stat -c %g /var/run/docker.sock
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - -listenip=0.0.0.0
+      - -allowfrom=authelia-admin
+      - -allowGET=^/version$
+      - -allowPOST=^/v1\.[0-9]+/containers/authelia/restart$
+    networks: [socket-proxy]
+
+  authelia-admin:
+    environment:
+      AUTHELIA_CONTAINER: authelia
+      DOCKER_HOST: tcp://socket-proxy:2375
+      RESTART_FLAG_FILE: /config/.restart-request   # optional fallback, see below
+    networks: [socket-proxy]   # plus the networks it already uses
+```
+
+Replace `authelia` in `-allowPOST` with your Authelia container name. The proxy then refuses everything else, including restarting other containers.
+
+**Both (proxy first, flag file as fallback).** Set `AUTHELIA_CONTAINER`, `DOCKER_HOST` and `RESTART_FLAG_FILE`, and keep the host service. The app restarts through the proxy; if that fails (proxy down, request refused, container not found), it creates the request file instead, shows a warning with the reason, and the host service restarts Authelia. The admin log records which way was used.
 
 **Docker socket (not recommended).** Set `AUTHELIA_CONTAINER`, mount `/var/run/docker.sock` and add `group_add` with the socket's group id (`stat -c %g /var/run/docker.sock`). This gives the container root-equivalent access to the host.
 
@@ -347,7 +379,7 @@ GitHub pauses scheduled workflows in repositories with no activity for 60 days (
 | Everyone is logged out after a restart | `SECRET_KEY` is not set. |
 | `TemplateNotFound` / Internal Server Error | Source folders are not readable by the container user (for example mode `0500`). Run `chmod -R u+rwX,go+rX app` and rebuild. |
 | Passkey button missing or fails | Needs `ADMIN_RP_ID` and `ADMIN_ORIGIN`, HTTPS, and the exact domain in the address bar. |
-| "Restart failed" | Docker-socket mode without the socket mounted. Use the flag-file mode instead. |
+| "Restart failed" | The Docker API restart didn't work; the message says why (proxy unreachable, request refused, wrong container name, or no socket). Add `RESTART_FLAG_FILE` as a fallback, or use the flag-file mode. |
 | Reset 2FA fails | `db.sqlite3` not at `storage.local.path`, or the storage encryption key is not available to this container. |
 
 ## Project layout
