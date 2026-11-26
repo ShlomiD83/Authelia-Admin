@@ -6,6 +6,10 @@ entries are headed by date. Changes not yet in a published image are listed unde
 
 ## Unreleased
 
+Nothing yet.
+
+## 2026-11-26 (image `2026.11.26-2020`)
+
 ### Fixed
 - The "Authelia version up to date" tag no longer disappears for an hour after one failed check: the GitHub
   release check is retried after 10 minutes, the built-in version check is retried too (it used to give up
